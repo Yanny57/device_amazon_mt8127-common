@@ -36,6 +36,8 @@ DEVICE_MANIFEST_FILE := $(DEVICE_COMMON)/manifest.xml
 # Kernel Configuration
 BOARD_KERNEL_IMAGE_NAME := zImage
 BOARD_KERNEL_CMDLINE += androidboot.hardware=mt8127
+# Q first-stage init only creates by-name links for the listed boot devices
+BOARD_KERNEL_CMDLINE += androidboot.boot_devices=mtk-msdc.0
 BOARD_KERNEL_BASE := 0x80000000
 BOARD_KERNEL_PAGESIZE := 2048
 TARGET_KERNEL_SOURCE := $(KERNEL_COMMON)
@@ -88,6 +90,9 @@ BOARD_BOOTIMAGE_PARTITION_SIZE := 16777216
 BOARD_RECOVERYIMAGE_PARTITION_SIZE := 16777216
 BOARD_SYSTEMIMAGE_PARTITION_SIZE := 1258291200
 BOARD_USERDATAIMAGE_PARTITION_SIZE := 6227082752
+# Q's OTA generator sizes its stash from the cache partition (mmcblk0p12, 256000 KiB)
+BOARD_CACHEIMAGE_PARTITION_SIZE := 262144000
+BOARD_CACHEIMAGE_FILE_SYSTEM_TYPE := ext4
 BOARD_FLASH_BLOCK_SIZE := 131072
 TARGET_USERIMAGES_USE_EXT4 := true
 BLOCK_BASED_OTA := true
@@ -106,7 +111,13 @@ TARGET_LD_SHIM_LIBS := \
     /system/lib/libMtkOmxVdec.so|libshim_libcamera.so \
     /system/lib/libMtkOmxVenc.so|libshim_libcamera.so \
     /system/lib/libcam.utils.sensorlistener.so|libshim_libcamera.so \
-    /system/lib/libcam_platform.so|libshim_libcamera.so
+    /system/lib/libcam_platform.so|libshim_libcamera.so \
+    /system/lib/libMali.so|libutilscallstack.so \
+    /system/lib/libmtk_mali_user.so|libutilscallstack.so \
+    /system/lib/hw/gralloc.mt8127.so|libutilscallstack.so \
+    /system/lib/libcam_utils.so|libutilscallstack.so \
+    /system/lib/libcam.utils.so|libutilscallstack.so \
+    /system/lib/libaudiocomponentengine.so|libutilscallstack.so
 
 # TWRP Recovery
 ifneq (,$(strip $(wildcard bootable/recovery-twrp/twrp.cpp)))

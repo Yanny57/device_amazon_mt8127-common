@@ -67,6 +67,7 @@ PRODUCT_PACKAGES += \
     android.hardware.camera.provider@2.4-impl \
     camera.device@1.0-impl \
     android.hardware.graphics.allocator@2.0-impl \
+    android.hardware.graphics.composer@2.1-impl \
     android.hardware.graphics.mapper@2.0-impl \
     android.hardware.keymaster@3.0-impl \
     android.hardware.light@2.0-impl \
@@ -152,3 +153,8 @@ PRODUCT_COPY_FILES += \
     frameworks/av/services/audiopolicy/config/r_submix_audio_policy_configuration.xml:$(TARGET_COPY_OUT_VENDOR)/etc/r_submix_audio_policy_configuration.xml \
     frameworks/av/services/audiopolicy/config/audio_policy_volumes.xml:$(TARGET_COPY_OUT_VENDOR)/etc/audio_policy_volumes.xml \
     frameworks/av/services/audiopolicy/config/default_volume_tables.xml:$(TARGET_COPY_OUT_VENDOR)/etc/default_volume_tables.xml
+
+# Q two-stage init: first-stage init only sees the boot ramdisk, so it needs
+# its own copy of the fstab to mount /system (the rootdir copy is in system.img)
+PRODUCT_COPY_FILES += \
+    $(DEVICE_COMMON)/rootdir/fstab.mt8127:$(TARGET_COPY_OUT_RAMDISK)/fstab.mt8127

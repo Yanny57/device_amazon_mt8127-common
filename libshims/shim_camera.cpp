@@ -8,6 +8,7 @@
 
 
 #include <ui/GraphicBuffer.h>
+#include <ui/GraphicBufferMapper.h>
 #include <string>
 #include <sensor/SensorEventQueue.h>
 #include <sensor/SensorManager.h>
@@ -28,13 +29,11 @@ extern "C" void _ZN7android13GraphicBufferC1Ejjij(
 }
 
 
-extern "C" void* _ZN7android19GraphicBufferMapper4lockEPK13native_handlejRKNS_4RectEPPv(
-	buffer_handle_t handle, uint32_t usage, const Rect& bounds, void** vaddr);
-
-extern "C" void* _ZN7android19GraphicBufferMapper4lockEPK13native_handleiRKNS_4RectEPPv(
-	buffer_handle_t handle, int32_t usage, const Rect& bounds, void** vaddr) {
-	return _ZN7android19GraphicBufferMapper4lockEPK13native_handlejRKNS_4RectEPPv(
-		handle, static_cast<uint32_t>(usage), bounds, vaddr);
+// GraphicBufferMapper::lock(handle, int usage, ...) from Nougat
+extern "C" status_t _ZN7android19GraphicBufferMapper4lockEPK13native_handleiRKNS_4RectEPPv(
+	GraphicBufferMapper* thiz, buffer_handle_t handle, int32_t usage, const Rect& bounds,
+	void** vaddr) {
+	return thiz->lock(handle, static_cast<uint32_t>(usage), bounds, vaddr);
 }
 
 // Nougat camera blobs use the Singleton<SensorManager> that Oreo removed (SensorManager is
