@@ -11,7 +11,7 @@ include $(BUILD_SHARED_LIBRARY)
 
 include $(CLEAR_VARS)
 LOCAL_SRC_FILES := shim_camera.cpp
-LOCAL_SHARED_LIBRARIES := libui liblog libcutils libgui libbinder libutils
+LOCAL_SHARED_LIBRARIES := libui liblog libcutils libgui libbinder libutils libsensor
 LOCAL_MODULE := libshim_libcamera
 LOCAL_MODULE_TAGS := optional
 LOCAL_MODULE_CLASS := SHARED_LIBRARIES
@@ -19,7 +19,7 @@ include $(BUILD_SHARED_LIBRARY)
 
 
 include $(CLEAR_VARS)
-LOCAL_SRC_FILES := shim_liblog.c
+LOCAL_SRC_FILES := shim_liblog.c shim_atomic.c
 LOCAL_SHARED_LIBRARIES := liblog
 LOCAL_MODULE := libshim_liblog
 LOCAL_MODULE_TAGS := optional
@@ -37,7 +37,7 @@ include $(BUILD_SHARED_LIBRARY)
 
 include $(CLEAR_VARS)
 LOCAL_SRC_FILES := shim_gui.cpp
-LOCAL_SHARED_LIBRARIES := libgui
+LOCAL_SHARED_LIBRARIES := libgui libui libutils
 LOCAL_MODULE := libshim_gui
 LOCAL_MODULE_TAGS := optional
 LOCAL_MODULE_CLASS := SHARED_LIBRARIES
