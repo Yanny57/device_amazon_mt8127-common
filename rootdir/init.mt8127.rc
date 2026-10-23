@@ -118,7 +118,6 @@ on init
     chmod 0666 /sys/kernel/debug/ion/heaps/*
 
     # Change NVRAM permissions
-    chmod -R 0777 /data/nvram/APCFG/APRDCL
 
     # Change Camera permission
     chmod 0660 /dev/camera-sysram
@@ -220,12 +219,10 @@ on post-fs-data
     chown system system /dev/ttyMT2
 
     # Char device for BT 3.0 HS
-    mknod /dev/ampc0 c 151 0
     chown bluetooth bluetooth /dev/ampc0
     chmod 0660 /dev/ampc0
 
     # wifi
-    mknod /dev/wmtWifi c 153 0
     chmod 0660 /dev/wmtWifi
     chown system wifi /dev/wmtWifi
     mkdir /data/misc/wifi 0770 wifi wifi
@@ -431,7 +428,6 @@ on boot
     setprop rild.mark_switchuser 0
 
     chmod 0644 /system/lib/libzteevdo-ril.so
-    chomd 0644 /system/lib/zterilPara
     chown root /system/bin/pppd
     chmod 4755 /system/bin/pppd
     chown root /system/bin/chat
@@ -577,11 +573,6 @@ service guiext-server /system/bin/guiext-server
     user system
     group system graphics
 
-# Define device for ATCID
-    chmod 660 /dev/ttyGS0
-    chown system /dev/ttyGS0
-    chmod 660 /dev/ttyGS1
-    chown system /dev/ttyGS1
 
 
 service atcid-daemon-u /system/bin/atcid
@@ -660,7 +651,6 @@ service usbdongled /system/bin/dongled
     class main
 	user root
 	group radio cache inet misc
-	enabled
 	oneshot
 
 service zpppd_gprs /system/bin/init.gprs-pppd

@@ -133,3 +133,6 @@ WITHOUT_CHECK_API := true
 
 # Legacy MTK daemons violate many Q neverallows (userdebug only)
 SELINUX_IGNORE_NEVERALLOWS := true
+
+# Audio: Q only supports the XML audio policy configuration
+USE_XML_AUDIO_POLICY_CONF := 1
