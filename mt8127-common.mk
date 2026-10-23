@@ -58,6 +58,23 @@ PRODUCT_COPY_FILES += \
     $(DEVICE_COMMON)/nvram/WIFI:system/etc/nvram/WIFI \
     $(DEVICE_COMMON)/nvram/WIFI_CUSTOM:system/etc/nvram/WIFI_CUSTOM
 
+# HIDL wrappers for the legacy HALs (see manifest.xml)
+PRODUCT_PACKAGES += \
+    android.hardware.audio@2.0-impl \
+    android.hardware.audio.effect@2.0-impl \
+    android.hardware.bluetooth@1.0-impl \
+    android.hardware.bluetooth@1.0-service \
+    android.hardware.camera.provider@2.4-impl \
+    camera.device@1.0-impl \
+    android.hardware.graphics.allocator@2.0-impl \
+    android.hardware.graphics.mapper@2.0-impl \
+    android.hardware.keymaster@3.0-impl \
+    android.hardware.light@2.0-impl \
+    android.hardware.memtrack@1.0-impl \
+    android.hardware.power@1.0-impl \
+    android.hardware.sensors@1.0-impl \
+    android.hardware.vibrator@1.0-impl
+
 # ABI fixes for old binaries
 PRODUCT_PACKAGES += \
 	libshim_libbinder \
@@ -111,14 +128,16 @@ PRODUCT_PACKAGES += \
     wifi_hal \
     libwpa_client \
     hostapd \
-    wpa_supplicant
+    wpa_supplicant \
+    android.hardware.wifi@1.0-service
 
 WITH_EXFAT := true
 
 PRODUCT_BUILD_PROP_OVERRIDES += BUILD_UTC_DATE=0
 
-# call dalvik heap config
-$(call inherit-product, frameworks/native/build/tablet-7in-hdpi-1024-dalvik-heap.mk)
+# Android Go (low-RAM) profile for the 1 GB ford: ro.config.low_ram, lmk tuning,
+# speed-profile system_server and a 128m/256m dalvik heap
+$(call inherit-product, build/target/product/go_defaults.mk)
 
 # call hwui memory config
 $(call inherit-product-if-exists, frameworks/native/build/phone-xxhdpi-2048-hwui-memory.mk)

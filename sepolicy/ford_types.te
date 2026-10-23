@@ -1,0 +1,2 @@
+type fuseblk, fs_type;
+type livedisplay_sysfs, fs_type, sysfs_type;

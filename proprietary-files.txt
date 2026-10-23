@@ -67,7 +67,6 @@ lib/lib_uree_mtk_video_secure_al.so
 lib/lib3a.so
 lib/libaal.so
 lib/libaed.so
-lib/libaudio-resampler.so
 lib/libaudiocompensationfilter.so
 lib/libaudiocomponentengine.so
 lib/libaudiocustparam.so
@@ -155,7 +154,6 @@ lib/libMtkOmxVdecEx.so
 lib/libMtkOmxVdec.so
 lib/libMtkOmxVenc.so
 lib/libMtkOmxVorbisEnc.so
-lib/libstagefright_omx.so
 lib/libMtkOmxAIVPlayer.so
 lib/libMtkOmxCore.so
 lib/libMtkOmxMp3Dec.so
@@ -174,7 +172,6 @@ lib/libspeech_enh_lib.so
 lib/libstagefrighthw.so
 lib/libstlport.so
 lib/libSwJpgCodec.so
-lib/libthermalservice.so
 lib/libtoe.so
 lib/libtrapz.so
 lib/libtz_uree.so
