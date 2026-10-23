@@ -1,0 +1,41 @@
+From 30840d4d80d3a600f91bf564c9c131634867b67c Mon Sep 17 00:00:00 2001
+From: Yanny57 <duke57883@outlook.com>
+Date: Fri, 23 Oct 2026 11:34:16 -0400
+Subject: [PATCH] display: Allow disabling the color fade animation
+
+Add ro.display.colorfade (default true). Legacy Mali drivers crash
+system_server rendering the GL screen-off animation.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Change-Id: I27ae51afe88dd2886aba9034b0b76d5e7391c444
+---
+ .../com/android/server/display/DisplayPowerController.java  | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/services/core/java/com/android/server/display/DisplayPowerController.java b/services/core/java/com/android/server/display/DisplayPowerController.java
+index 80bdf1ff..f997f2fb 100644
+--- a/services/core/java/com/android/server/display/DisplayPowerController.java
++++ b/services/core/java/com/android/server/display/DisplayPowerController.java
+@@ -38,6 +38,7 @@ import android.os.Message;
+ import android.os.PowerManager;
+ import android.os.RemoteException;
+ import android.os.SystemClock;
++import android.os.SystemProperties;
+ import android.os.Trace;
+ import android.util.MathUtils;
+ import android.util.Slog;
+@@ -429,7 +430,10 @@ final class DisplayPowerController implements AutomaticBrightnessController.Call
+         mScreenBrightnessRangeMinimum = screenBrightnessRangeMinimum;
+ 
+ 
+-        mColorFadeEnabled = !ActivityManager.isLowRamDeviceStatic();
++        // ro.display.colorfade=false skips the GL screen on/off animation, for
++        // legacy GPU drivers that can't render it.
++        mColorFadeEnabled = !ActivityManager.isLowRamDeviceStatic()
++                && SystemProperties.getBoolean("ro.display.colorfade", true);
+         mColorFadeFadesConfig = resources.getBoolean(
+                 com.android.internal.R.bool.config_animateScreenLights);
+ 
+-- 
+2.55.0
+

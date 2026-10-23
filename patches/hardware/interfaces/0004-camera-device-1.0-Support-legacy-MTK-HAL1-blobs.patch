@@ -1,0 +1,187 @@
+From ddf356231c60ac26cbcf28d20f95993cf2443520 Mon Sep 17 00:00:00 2001
+From: Yanny57 <duke57883@outlook.com>
+Date: Fri, 23 Oct 2026 11:34:16 -0400
+Subject: [PATCH] camera: device@1.0: Support legacy MTK HAL1 blobs
+
+- Fall back to the open device when the HAL passes a null user cookie
+  to its callbacks (MTK get_memory does).
+- Back every dequeued preview handle with an ANativeWindowBuffer, since
+  the MTK DisplayClient container_of()s the handle pointer.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Change-Id: Ibeaf5e1a1dde3d9d73f5af5f042551bdf5442ee1
+---
+ camera/device/1.0/default/Android.bp         |  2 +
+ camera/device/1.0/default/CameraDevice.cpp   | 42 ++++++++++++++++----
+ camera/device/1.0/default/CameraDevice_1_0.h |  8 ++++
+ 3 files changed, 45 insertions(+), 7 deletions(-)
+
+diff --git a/camera/device/1.0/default/Android.bp b/camera/device/1.0/default/Android.bp
+index d25d548..fa35161 100644
+--- a/camera/device/1.0/default/Android.bp
++++ b/camera/device/1.0/default/Android.bp
+@@ -28,7 +28,9 @@ cc_library_shared {
+     ],
+     header_libs: [
+         "media_plugin_headers",
++        "libnativebase_headers",
+     ],
++    export_header_lib_headers: ["libnativebase_headers"],
+     include_dirs: [
+         "frameworks/native/include/media/openmax"
+     ],
+diff --git a/camera/device/1.0/default/CameraDevice.cpp b/camera/device/1.0/default/CameraDevice.cpp
+index 116963b..b7da8f6 100644
+--- a/camera/device/1.0/default/CameraDevice.cpp
++++ b/camera/device/1.0/default/CameraDevice.cpp
+@@ -36,6 +36,10 @@ using ::android::hardware::graphics::common::V1_0::PixelFormat;
+ 
+ HandleImporter CameraDevice::sHandleImporter;
+ 
++// Legacy MTK HAL1 blobs call get_memory with a null user cookie, so remember the open
++// device to fall back on (HAL1 only supports one open camera at a time here).
++static CameraDevice* sOpenDevice = nullptr;
++
+ Status CameraDevice::getHidlStatus(const int& status) {
+     switch (status) {
+         case 0: return Status::OK;
+@@ -141,6 +145,10 @@ void CameraDevice::CameraPreviewWindow::cleanUpCirculatingBuffers() {
+         sHandleImporter.freeBuffer(pair.second);
+     }
+     mCirculatingBuffers.clear();
++    for (auto pair : mWindowBuffers) {
++        delete pair.second;
++    }
++    mWindowBuffers.clear();
+     mBufferIdMap.clear();
+ }
+ 
+@@ -172,10 +180,22 @@ int CameraDevice::sDequeueBuffer(struct preview_stream_ops* w,
+                         return;
+                     } else {
+                         object->mCirculatingBuffers[bufferId] = importedBuf;
+-                        object->mBufferIdMap[&(object->mCirculatingBuffers[bufferId])] = bufferId;
++                        ANativeWindowBuffer* anb = new ANativeWindowBuffer();
++                        // Lifetime is owned by mWindowBuffers, the blob's refs are no-ops
++                        anb->common.incRef = [](struct android_native_base_t*) {};
++                        anb->common.decRef = [](struct android_native_base_t*) {};
++                        anb->width = object->mWidth;
++                        anb->height = object->mHeight;
++                        anb->stride = strd;
++                        anb->format = object->mFormat;
++                        anb->usage_deprecated = object->mUsage;
++                        anb->usage = static_cast<uint32_t>(object->mUsage);
++                        anb->handle = importedBuf;
++                        object->mWindowBuffers[bufferId] = anb;
++                        object->mBufferIdMap[&anb->handle] = bufferId;
+                     }
+                 }
+-                *buffer = &(object->mCirculatingBuffers[bufferId]);
++                *buffer = &(object->mWindowBuffers[bufferId]->handle);
+                 *stride = strd;
+             }
+         });
+@@ -226,6 +246,9 @@ int CameraDevice::sSetBuffersGeometry(struct preview_stream_ops* w,
+     }
+ 
+     object->cleanUpCirculatingBuffers();
++    object->mWidth = width;
++    object->mHeight = height;
++    object->mFormat = format;
+     return getStatusT(
+             object->mPreviewCallback->setBuffersGeometry(width, height, (PixelFormat) format));
+ }
+@@ -259,6 +282,7 @@ int CameraDevice::sSetUsage(struct preview_stream_ops* w, int usage) {
+     }
+ 
+     object->cleanUpCirculatingBuffers();
++    object->mUsage = usage;
+     return getStatusT(object->mPreviewCallback->setUsage((BufferUsage)usage));
+ }
+ 
+@@ -361,8 +385,8 @@ CameraDevice::CameraHeapMemory::~CameraHeapMemory() {
+ // shared memory methods
+ camera_memory_t* CameraDevice::sGetMemory(int fd, size_t buf_size, uint_t num_bufs, void *user) {
+     ALOGV("%s", __FUNCTION__);
+-    CameraDevice* object = static_cast<CameraDevice*>(user);
+-    if (object->mDeviceCallback == nullptr) {
++    CameraDevice* object = user ? static_cast<CameraDevice*>(user) : sOpenDevice;
++    if (object == nullptr || object->mDeviceCallback == nullptr) {
+         ALOGE("%s: camera HAL request memory while camera is not opened!", __FUNCTION__);
+         return nullptr;
+     }
+@@ -412,7 +436,7 @@ void CameraDevice::sPutMemory(camera_memory_t *data) {
+ // Callback forwarding methods
+ void CameraDevice::sNotifyCb(int32_t msg_type, int32_t ext1, int32_t ext2, void *user) {
+     ALOGV("%s", __FUNCTION__);
+-    CameraDevice* object = static_cast<CameraDevice*>(user);
++    CameraDevice* object = user ? static_cast<CameraDevice*>(user) : sOpenDevice;
+     if (object->mDeviceCallback != nullptr) {
+         object->mDeviceCallback->notifyCallback((NotifyCallbackMsg) msg_type, ext1, ext2);
+     }
+@@ -421,7 +445,7 @@ void CameraDevice::sNotifyCb(int32_t msg_type, int32_t ext1, int32_t ext2, void
+ void CameraDevice::sDataCb(int32_t msg_type, const camera_memory_t *data, unsigned int index,
+         camera_frame_metadata_t *metadata, void *user) {
+     ALOGV("%s", __FUNCTION__);
+-    CameraDevice* object = static_cast<CameraDevice*>(user);
++    CameraDevice* object = user ? static_cast<CameraDevice*>(user) : sOpenDevice;
+     sp<CameraHeapMemory> mem(static_cast<CameraHeapMemory*>(data->handle));
+     if (index >= mem->mNumBufs) {
+         ALOGE("%s: invalid buffer index %d, max allowed is %d", __FUNCTION__,
+@@ -533,7 +557,7 @@ void CameraDevice::handleCallbackTimestamp(
+ void CameraDevice::sDataCbTimestamp(nsecs_t timestamp, int32_t msg_type,
+         const camera_memory_t *data, unsigned index, void *user) {
+     ALOGV("%s", __FUNCTION__);
+-    CameraDevice* object = static_cast<CameraDevice*>(user);
++    CameraDevice* object = user ? static_cast<CameraDevice*>(user) : sOpenDevice;
+     // Start refcounting the heap object from here on.  When the clients
+     // drop all references, it will be destroyed (as well as the enclosed
+     // MemoryHeapBase.
+@@ -720,6 +744,7 @@ Return<Status> CameraDevice::open(const sp<ICameraDeviceCallback>& callback) {
+         mDevice->ops->set_callbacks(mDevice,
+                 sNotifyCb, sDataCb, sDataCbTimestamp, sGetMemory, this);
+     }
++    sOpenDevice = this;
+ 
+     return getHidlStatus(rc);
+ }
+@@ -1060,6 +1085,9 @@ void CameraDevice::closeLocked() {
+         }
+         mDevice = nullptr;
+     }
++    if (sOpenDevice == this) {
++        sOpenDevice = nullptr;
++    }
+ }
+ 
+ }  // namespace implementation
+diff --git a/camera/device/1.0/default/CameraDevice_1_0.h b/camera/device/1.0/default/CameraDevice_1_0.h
+index 2b35a73..356f5f8 100644
+--- a/camera/device/1.0/default/CameraDevice_1_0.h
++++ b/camera/device/1.0/default/CameraDevice_1_0.h
+@@ -18,6 +18,7 @@
+ #define ANDROID_HARDWARE_CAMERA_DEVICE_V1_0_CAMERADEVICE_H
+ 
+ #include <unordered_map>
++#include <nativebase/nativebase.h>
+ #include "utils/Mutex.h"
+ #include "utils/SortedVector.h"
+ #include "CameraModule.h"
+@@ -155,7 +156,14 @@ private:
+         Mutex mLock;
+         sp<ICameraDevicePreviewCallback> mPreviewCallback = nullptr;
+         std::unordered_map<uint64_t, buffer_handle_t> mCirculatingBuffers;
++        // Legacy MTK HAL1 blobs container_of() the dequeued handle pointer back to an
++        // ANativeWindowBuffer, so each handle handed out lives inside one of these.
++        std::unordered_map<uint64_t, ANativeWindowBuffer*> mWindowBuffers;
+         std::unordered_map<buffer_handle_t*, uint64_t> mBufferIdMap;
++        int mWidth = 0;
++        int mHeight = 0;
++        int mFormat = 0;
++        int mUsage = 0;
+     } mHalPreviewWindow;
+ 
+     // gating access to mDevice, mInitFail, mDisconnected
+-- 
+2.55.0
+

@@ -1,0 +1,133 @@
+From 2f1690c4e122c541214d8d4352a78389812d9d21 Mon Sep 17 00:00:00 2001
+From: Yanny57 <duke57883@outlook.com>
+Date: Fri, 23 Oct 2026 11:34:16 -0400
+Subject: [PATCH 1/4] graphics: Support legacy framebuffer gralloc0 HALs
+
+Legacy Mali gralloc refuses to register framebuffer buffers. Clone
+handles leniently, hand out the original handle when registration
+fails, and never free GRALLOC_USAGE_HW_FB buffers in the allocator.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Change-Id: Id125731ffbd61ac06e38fbb51dce9a86c6bbbd7e
+---
+ .../2.0/default/Gralloc0Allocator.cpp         |  6 +++
+ graphics/mapper/2.0/default/GrallocMapper.cpp | 49 +++++++++++++++++--
+ 2 files changed, 51 insertions(+), 4 deletions(-)
+
+diff --git a/graphics/allocator/2.0/default/Gralloc0Allocator.cpp b/graphics/allocator/2.0/default/Gralloc0Allocator.cpp
+index 3b62bb3..f595510 100644
+--- a/graphics/allocator/2.0/default/Gralloc0Allocator.cpp
++++ b/graphics/allocator/2.0/default/Gralloc0Allocator.cpp
+@@ -102,6 +102,12 @@ Return<void> Gralloc0Allocator::allocate(const BufferDescriptor& descriptor,
+     hidl_cb(error, stride, hidl_buffers);
+ 
+     // free the buffers
++    // Legacy framebuffer buffers can't be registered by the mapper, so with a
++    // passthrough allocator the mapper keeps using these very handles: leave
++    // them allocated.
++    if (error == Error::NONE && (descriptorInfo.usage & GRALLOC_USAGE_HW_FB)) {
++        return Void();
++    }
+     for (const auto& buffer : buffers) {
+         mDevice->free(mDevice, buffer.getNativeHandle());
+     }
+diff --git a/graphics/mapper/2.0/default/GrallocMapper.cpp b/graphics/mapper/2.0/default/GrallocMapper.cpp
+index d16143d..df6c3d6 100644
+--- a/graphics/mapper/2.0/default/GrallocMapper.cpp
++++ b/graphics/mapper/2.0/default/GrallocMapper.cpp
+@@ -22,6 +22,10 @@
+ #include "GrallocBufferDescriptor.h"
+ 
+ #include <inttypes.h>
++#include <string.h>
++#include <mutex>
++#include <unordered_set>
++#include <unistd.h>
+ 
+ #include <log/log.h>
+ #include <sync/sync.h>
+@@ -38,6 +42,25 @@ using android::hardware::graphics::common::V1_0::PixelFormat;
+ 
+ namespace {
+ 
++// Like native_handle_clone(), but keeps going when an fd can't be dup'd:
++// legacy gralloc framebuffer handles can carry fds that are not valid in the
++// importing process, and those are never needed for mapping.
++native_handle_t* cloneHandleLenient(const native_handle_t* handle) {
++    native_handle_t* clone = native_handle_create(handle->numFds, handle->numInts);
++    if (!clone) {
++        return nullptr;
++    }
++    for (int i = 0; i < handle->numFds; i++) {
++        clone->data[i] = handle->data[i] >= 0 ? dup(handle->data[i]) : -1;
++        if (clone->data[i] < 0 && handle->data[i] >= 0) {
++            ALOGW("cloneHandleLenient: dup(%d) failed, keeping -1", handle->data[i]);
++        }
++    }
++    memcpy(&clone->data[handle->numFds], &handle->data[handle->numFds],
++           sizeof(int) * handle->numInts);
++    return clone;
++}
++
+ class RegisteredHandlePool {
+    public:
+     bool add(buffer_handle_t bufferHandle) {
+@@ -74,6 +97,10 @@ class RegisteredHandlePool {
+ // is potentially broken.
+ RegisteredHandlePool* gRegisteredHandles = new RegisteredHandlePool;
+ 
++// Handles imported without registering or cloning (see importBuffer).
++std::mutex gUnownedHandlesMutex;
++std::unordered_set<native_handle_t*> gUnownedHandles;
++
+ }  // anonymous namespace
+ 
+ bool GrallocMapper::validateDescriptorInfo(
+@@ -134,19 +161,25 @@ Return<void> GrallocMapper::importBuffer(const hidl_handle& rawHandle,
+     }
+ 
+     native_handle_t* bufferHandle =
+-        native_handle_clone(rawHandle.getNativeHandle());
++        cloneHandleLenient(rawHandle.getNativeHandle());
+     if (!bufferHandle) {
+         hidl_cb(Error::NO_RESOURCES, nullptr);
+         return Void();
+     }
+ 
++    // Legacy (Nougat) Mali gralloc refuses to register framebuffer buffers,
++    // which are only ever allocated and used inside surfaceflinger (the
++    // allocator is passthrough and does not free them). Before Oreo those
++    // were never registered or cloned, and the driver needs the original
++    // handle (a clone loses data beyond numInts), so hand that out as is.
+     Error error = registerBuffer(bufferHandle);
+     if (error != Error::NONE) {
++        ALOGW("registerBuffer failed (%d), using the original handle", error);
+         native_handle_close(bufferHandle);
+         native_handle_delete(bufferHandle);
+-
+-        hidl_cb(error, nullptr);
+-        return Void();
++        bufferHandle = const_cast<native_handle_t*>(rawHandle.getNativeHandle());
++        std::lock_guard<std::mutex> lock(gUnownedHandlesMutex);
++        gUnownedHandles.insert(bufferHandle);
+     }
+ 
+     // The newly cloned handle is already registered?  This can only happen
+@@ -175,6 +208,14 @@ Return<Error> GrallocMapper::freeBuffer(void* buffer) {
+         return Error::BAD_BUFFER;
+     }
+ 
++    {
++        std::lock_guard<std::mutex> lock(gUnownedHandlesMutex);
++        if (gUnownedHandles.erase(bufferHandle)) {
++            // still owned by gralloc (legacy framebuffer buffer)
++            return Error::NONE;
++        }
++    }
++
+     unregisterBuffer(bufferHandle);
+     if (!mCapabilities.unregisterImplyDelete) {
+         native_handle_close(bufferHandle);
+-- 
+2.55.0
+
