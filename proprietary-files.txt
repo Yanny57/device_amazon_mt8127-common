@@ -40,8 +40,6 @@ bin/wmt_loader
 etc/.tp/.ht120.mtc
 etc/.tp/thermal.conf
 etc/.tp/thermal.off.conf
-etc/bluetooth/bt_did.conf
-etc/bluetooth/bt_stack.conf
 etc/firmware/ROMv2_patch_1_0_hdr.bin
 etc/firmware/ROMv2_patch_1_1_hdr.bin
 etc/firmware/WIFI_RAM_CODE_8127
@@ -152,7 +150,6 @@ lib/libMtkOmxMp3Dec.so
 lib/libMtkOmxRawDec.so
 lib/libMtkOmxVdecEx.so
 lib/libMtkOmxVdec.so
-lib/libMtkOmxVenc.so
 lib/libMtkOmxVorbisEnc.so
 lib/libMtkOmxAIVPlayer.so
 lib/libMtkOmxCore.so

@@ -106,10 +106,7 @@ TARGET_LD_SHIM_LIBS := \
     /system/lib/libMtkOmxVdec.so|libshim_libcamera.so \
     /system/lib/libMtkOmxVenc.so|libshim_libcamera.so \
     /system/lib/libcam.utils.sensorlistener.so|libshim_libcamera.so \
-    /system/lib/libcam_platform.so|libshim_libcamera.so \
-    /system/lib/libaal.so|libshim_skia.so \
-    /system/lib/libaal.so|libshim_gui.so \
-    /system/lib/libaal.so|libshim_libbinder.so
+    /system/lib/libcam_platform.so|libshim_libcamera.so
 
 # TWRP Recovery
 ifneq (,$(strip $(wildcard bootable/recovery-twrp/twrp.cpp)))
@@ -133,3 +130,6 @@ BOARD_SEPOLICY_DIRS += $(DEVICE_COMMON)/sepolicy
 
 # Build guards
 WITHOUT_CHECK_API := true
+
+# Legacy MTK daemons violate many Q neverallows (userdebug only)
+SELINUX_IGNORE_NEVERALLOWS := true

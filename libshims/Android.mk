@@ -28,14 +28,6 @@ include $(BUILD_SHARED_LIBRARY)
 
 
 include $(CLEAR_VARS)
-LOCAL_SRC_FILES := shim_skia.cpp
-LOCAL_SHARED_LIBRARIES := libskia
-LOCAL_MODULE := libshim_skia
-LOCAL_MODULE_TAGS := optional
-LOCAL_MODULE_CLASS := SHARED_LIBRARIES
-include $(BUILD_SHARED_LIBRARY)
-
-include $(CLEAR_VARS)
 LOCAL_SRC_FILES := shim_gui.cpp
 LOCAL_SHARED_LIBRARIES := libgui libui libutils
 LOCAL_MODULE := libshim_gui

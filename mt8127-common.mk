@@ -81,7 +81,6 @@ PRODUCT_PACKAGES += \
 	libshim_liblog \
 	libshim_libwvm \
     libshim_libcamera \
-    libshim_skia \
     libshim_gui
 
 # Audio

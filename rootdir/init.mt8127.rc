@@ -520,11 +520,6 @@ service thermald /system/bin/thermald
     user system
     group system
 
-service aal /system/bin/aal
-    class core
-    user system
-    group system graphics radio
-    
 service pq /system/bin/pq
     class main
     user system
@@ -588,14 +583,6 @@ service guiext-server /system/bin/guiext-server
     chmod 660 /dev/ttyGS1
     chown system /dev/ttyGS1
 
-service atci_service /system/bin/atci_service
-    class core
-    socket atci-service stream 660 radio system
-    socket atci-serv-fw stream 660 radio system
-    user root
-    disabled
-    group radio system
-    oneshot
 
 service atcid-daemon-u /system/bin/atcid
     class main
@@ -618,7 +605,6 @@ service sbchk /system/bin/sbchk
     oneshot
 
 on property:init.svc.servicemanager=restarting
-	restart aal
 	restart pq
 
 on property:init.svc.bootanim=running
@@ -629,7 +615,6 @@ on property:init.svc.bootanim=stopped
 	start auto_shutdown
 
 on property:ro.build.type=eng
-    start atci_service
     start atcid-daemon-e
     
 # emsvr service
