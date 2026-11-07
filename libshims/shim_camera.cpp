@@ -36,6 +36,12 @@ extern "C" status_t _ZN7android19GraphicBufferMapper4lockEPK13native_handleiRKNS
 	return thiz->lock(handle, static_cast<uint32_t>(usage), bounds, vaddr);
 }
 
+// GraphicBuffer::lock(usage, vaddr) from Nougat; Q added the bytes-per-pixel/stride outputs
+extern "C" status_t _ZN7android13GraphicBuffer4lockEjPPv(
+	GraphicBuffer* thiz, uint32_t inUsage, void** vaddr) {
+	return thiz->lock(inUsage, vaddr);
+}
+
 // Nougat camera blobs use the Singleton<SensorManager> that Oreo removed (SensorManager is
 // now per package and larger). Pre-fill the inlined singleton with a real Oreo instance so
 // the blobs never construct a Nougat-sized one themselves.

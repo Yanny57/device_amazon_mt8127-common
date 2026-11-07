@@ -42,6 +42,7 @@ LOCAL_SRC_FILES := \
 	wifi_offload.cpp
 
 LOCAL_MODULE := libwifi-hal-mt66xx
+LOCAL_HEADER_LIBRARIES := libutils_headers liblog_headers libcutils_headers libhardware_legacy_headers
 LOCAL_PROPRIETARY_MODULE := true
 LOCAL_MODULE_OWNER := mtk
 

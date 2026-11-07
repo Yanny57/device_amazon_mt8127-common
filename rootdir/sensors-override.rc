@@ -1,0 +1,9 @@
+# Parsed after android.hardware.sensors@1.0-service.rc (same dir, sorted by name).
+# The MTK sensors HAL reads /dev/input events, so the service also needs "input".
+service vendor.sensors-hal-1-0 /vendor/bin/hw/android.hardware.sensors@1.0-service
+    override
+    class hal
+    user system
+    group system wakelock uhid input
+    capabilities BLOCK_SUSPEND
+    rlimit rtprio 10 10

@@ -24,15 +24,18 @@ TARGET_CPU_SMP := true
 ARCH_ARM_HAVE_TLS_REGISTER := true
 ARCH_ARM_HAVE_NEON := true
 
-# Non-Treble & Vendor Isolation Overrides (Required for 8.1 Bringup)
-PRODUCT_FULL_TREBLE_OVERRIDE := false
+# Treble: split sepolicy, VINTF, VNDK 29 vendor. The Nougat blobs still need
+# non-VNDK system libs (libmedia, libstagefright, libcamera_client...), so the
+# linker runs in VNDK-lite mode (ro.vndk.lite=true; a "vndklite" GSI)
+PRODUCT_FULL_TREBLE_OVERRIDE := true
+BOARD_VNDK_VERSION := current
+BOARD_VNDK_RUNTIME_DISABLE := true
 # Real /vendor partition (mmcblk0p14 on the "big" GPT, see ~/ClaudeCode/ford-gpt.sh)
 TARGET_COPY_OUT_VENDOR := vendor
 BOARD_VENDORIMAGE_PARTITION_SIZE := 268435456
 BOARD_VENDORIMAGE_FILE_SYSTEM_TYPE := ext4
-# thermal_manager reads /etc/.tp/thermal.conf; patched to the same-length /odm/.tp/
-BOARD_ROOT_EXTRA_SYMLINKS := /vendor/etc/.tp:/odm/.tp
-BOARD_PROPERTY_OVERRIDES_SPLIT_ENABLED := false
+# Device props go to /vendor/build.prop (a GSI replaces /system/build.prop)
+BOARD_PROPERTY_OVERRIDES_SPLIT_ENABLED := true
 TARGET_USES_64_BIT_BINDER := false
 
 # HIDL
@@ -107,25 +110,7 @@ BLOCK_BASED_OTA := true
 # Vold
 TARGET_USE_CUSTOM_LUN_FILE_PATH := /sys/devices/platform/mt_usb/musb-hdrc.0.auto/gadget/lun%d/file
 
-# Shims
-TARGET_LD_SHIM_LIBS := \
-    /system/lib/libbinder.so|libshim_libbinder.so \
-    /system/lib/liblog.so|libshim_liblog.so \
-    /system/lib/libcutils.so|libshim_liblog.so \
-    /vendor/lib/libwvm.so|libshim_libwvm.so \
-    /vendor/lib/libasp.so|libshim_libbinder.so \
-    /vendor/lib/libcam_utils.so|libshim_libcamera.so \
-    /vendor/lib/libMtkOmxVdec.so|libshim_libcamera.so \
-    /vendor/lib/libMtkOmxVenc.so|libshim_libcamera.so \
-    /vendor/lib/libgui_ext.so|libshim_gui.so \
-    /vendor/lib/libcam.utils.sensorlistener.so|libshim_libcamera.so \
-    /vendor/lib/libcam_platform.so|libshim_libcamera.so \
-    /vendor/lib/libMali.so|libutilscallstack.so \
-    /vendor/lib/libmtk_mali_user.so|libutilscallstack.so \
-    /vendor/lib/hw/gralloc.mt8127.so|libutilscallstack.so \
-    /vendor/lib/libcam_utils.so|libutilscallstack.so \
-    /vendor/lib/libcam.utils.so|libutilscallstack.so \
-    /vendor/lib/libaudiocomponentengine.so|libutilscallstack.so
+# Shims: added to the blobs' DT_NEEDED by vendor/amazon/mt8127-common/patch-shims.sh
 
 # TWRP Recovery
 ifneq (,$(strip $(wildcard bootable/recovery-twrp/twrp.cpp)))

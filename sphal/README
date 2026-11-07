@@ -1,0 +1,8 @@
+Copies of VNDK-core / system libs (vendor variants built from this tree) that the
+legacy graphics blobs need inside the "sphal" linker namespace. Same-process HALs
+(EGL, gralloc, mapper, allocator, composer) load into surfaceflinger and apps
+through sphal, which in VNDK-lite only searches /vendor/lib{,/hw} and links LLNDK
+plus a list of VNDK-SP libs. Installed to /vendor/lib/hw by mt8127-common.mk:
+sphal searches it but vendor processes don't, so these VNDK variants (libbinder
+lacks PermissionCache) don't shadow the system libs that vendor services load.
+Refresh from out/target/product/ford/system/lib/vndk-29 after a framework rebuild.
