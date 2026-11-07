@@ -56,6 +56,14 @@ ifdef CONFIG_ANDROID_LOG
 L_CFLAGS += -DCONFIG_ANDROID_LOG
 endif
 
+# Match the struct wpa_supplicant layout of the supplicant itself
+ifdef CONFIG_P2P
+L_CFLAGS += -DCONFIG_P2P
+endif
+ifdef CONFIG_CTRL_IFACE_HIDL
+L_CFLAGS += -DCONFIG_HIDL -DCONFIG_CTRL_IFACE_HIDL
+endif
+
 ########################
 include $(CLEAR_VARS)
 LOCAL_MODULE := lib_driver_cmd_mt66xx

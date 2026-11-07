@@ -10,7 +10,7 @@ include $(BUILD_SHARED_LIBRARY)
 
 
 include $(CLEAR_VARS)
-LOCAL_SRC_FILES := shim_camera.cpp
+LOCAL_SRC_FILES := shim_camera.cpp shim_omx.cpp
 LOCAL_SHARED_LIBRARIES := libui liblog libcutils libgui libbinder libutils libsensor
 LOCAL_MODULE := libshim_libcamera
 LOCAL_MODULE_TAGS := optional

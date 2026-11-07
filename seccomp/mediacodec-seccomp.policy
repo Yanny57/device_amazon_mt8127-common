@@ -4,7 +4,6 @@ sched_getscheduler: 1
 sched_setaffinity: 1
 sched_getparam: 1
 sendto: 1
-getdents64: 1
 gettid: 1
 geteuid32: 1
 getgid32: 1
@@ -12,3 +11,12 @@ getegid32: 1
 getpid: 1
 uname: 1
 fsync : 1
+# MTK libvcodecdrv (get_phys_pages)
+sysinfo: 1
+# MTK libbwc sets properties (property service socket)
+socket: arg0 == 1
+connect: 1
+recvfrom: 1
+writev: 1
+ppoll: 1
+shutdown: 1

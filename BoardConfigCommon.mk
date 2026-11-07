@@ -26,7 +26,12 @@ ARCH_ARM_HAVE_NEON := true
 
 # Non-Treble & Vendor Isolation Overrides (Required for 8.1 Bringup)
 PRODUCT_FULL_TREBLE_OVERRIDE := false
-TARGET_COPY_OUT_VENDOR := system/vendor
+# Real /vendor partition (mmcblk0p14 on the "big" GPT, see ~/ClaudeCode/ford-gpt.sh)
+TARGET_COPY_OUT_VENDOR := vendor
+BOARD_VENDORIMAGE_PARTITION_SIZE := 268435456
+BOARD_VENDORIMAGE_FILE_SYSTEM_TYPE := ext4
+# thermal_manager reads /etc/.tp/thermal.conf; patched to the same-length /odm/.tp/
+BOARD_ROOT_EXTRA_SYMLINKS := /vendor/etc/.tp:/odm/.tp
 BOARD_PROPERTY_OVERRIDES_SPLIT_ENABLED := false
 TARGET_USES_64_BIT_BINDER := false
 
@@ -38,6 +43,8 @@ BOARD_KERNEL_IMAGE_NAME := zImage
 BOARD_KERNEL_CMDLINE += androidboot.hardware=mt8127
 # Q first-stage init only creates by-name links for the listed boot devices
 BOARD_KERNEL_CMDLINE += androidboot.boot_devices=mtk-msdc.0
+# TEMP DEBUG (17.1 bring-up): keep early init messages in dmesg
+BOARD_KERNEL_CMDLINE += log_buf_len=1M
 BOARD_KERNEL_BASE := 0x80000000
 BOARD_KERNEL_PAGESIZE := 2048
 TARGET_KERNEL_SOURCE := $(KERNEL_COMMON)
@@ -88,10 +95,10 @@ NUM_FRAMEBUFFER_SURFACE_BUFFERS := 3
 # Partitions & Filesystem
 BOARD_BOOTIMAGE_PARTITION_SIZE := 16777216
 BOARD_RECOVERYIMAGE_PARTITION_SIZE := 16777216
-BOARD_SYSTEMIMAGE_PARTITION_SIZE := 1258291200
-BOARD_USERDATAIMAGE_PARTITION_SIZE := 6227082752
-# Q's OTA generator sizes its stash from the cache partition (mmcblk0p12, 256000 KiB)
-BOARD_CACHEIMAGE_PARTITION_SIZE := 262144000
+BOARD_SYSTEMIMAGE_PARTITION_SIZE := 2147483648
+BOARD_USERDATAIMAGE_PARTITION_SIZE := 5197381120
+# Q's OTA generator sizes its stash from the cache partition (mmcblk0p12, 128 MiB)
+BOARD_CACHEIMAGE_PARTITION_SIZE := 134217728
 BOARD_CACHEIMAGE_FILE_SYSTEM_TYPE := ext4
 BOARD_FLASH_BLOCK_SIZE := 131072
 TARGET_USERIMAGES_USE_EXT4 := true
@@ -105,19 +112,20 @@ TARGET_LD_SHIM_LIBS := \
     /system/lib/libbinder.so|libshim_libbinder.so \
     /system/lib/liblog.so|libshim_liblog.so \
     /system/lib/libcutils.so|libshim_liblog.so \
-    /system/vendor/lib/libwvm.so|libshim_libwvm.so \
-    /system/lib/libasp.so|libshim_libbinder.so \
-    /system/lib/libcam_utils.so|libshim_libcamera.so \
-    /system/lib/libMtkOmxVdec.so|libshim_libcamera.so \
-    /system/lib/libMtkOmxVenc.so|libshim_libcamera.so \
-    /system/lib/libcam.utils.sensorlistener.so|libshim_libcamera.so \
-    /system/lib/libcam_platform.so|libshim_libcamera.so \
-    /system/lib/libMali.so|libutilscallstack.so \
-    /system/lib/libmtk_mali_user.so|libutilscallstack.so \
-    /system/lib/hw/gralloc.mt8127.so|libutilscallstack.so \
-    /system/lib/libcam_utils.so|libutilscallstack.so \
-    /system/lib/libcam.utils.so|libutilscallstack.so \
-    /system/lib/libaudiocomponentengine.so|libutilscallstack.so
+    /vendor/lib/libwvm.so|libshim_libwvm.so \
+    /vendor/lib/libasp.so|libshim_libbinder.so \
+    /vendor/lib/libcam_utils.so|libshim_libcamera.so \
+    /vendor/lib/libMtkOmxVdec.so|libshim_libcamera.so \
+    /vendor/lib/libMtkOmxVenc.so|libshim_libcamera.so \
+    /vendor/lib/libgui_ext.so|libshim_gui.so \
+    /vendor/lib/libcam.utils.sensorlistener.so|libshim_libcamera.so \
+    /vendor/lib/libcam_platform.so|libshim_libcamera.so \
+    /vendor/lib/libMali.so|libutilscallstack.so \
+    /vendor/lib/libmtk_mali_user.so|libutilscallstack.so \
+    /vendor/lib/hw/gralloc.mt8127.so|libutilscallstack.so \
+    /vendor/lib/libcam_utils.so|libutilscallstack.so \
+    /vendor/lib/libcam.utils.so|libutilscallstack.so \
+    /vendor/lib/libaudiocomponentengine.so|libutilscallstack.so
 
 # TWRP Recovery
 ifneq (,$(strip $(wildcard bootable/recovery-twrp/twrp.cpp)))
