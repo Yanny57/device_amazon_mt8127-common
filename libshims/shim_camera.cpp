@@ -66,3 +66,15 @@ extern "C" sp<SensorEventQueue> _ZN7android13SensorManager16createEventQueueEv(S
     return sensorMgr->createEventQueue();
 }
 #pragma clang diagnostic pop
+
+// libcameraanalyzer's libjnigraphics calls (libjnigraphics is outside the VNDK). They
+// take a Java Bitmap, which the camera HAL process never has.
+extern "C" int AndroidBitmap_getInfo(void* /* env */, void* /* jbitmap */, void* /* info */) {
+    return -1; // ANDROID_BITMAP_RESULT_BAD_PARAMETER
+}
+extern "C" int AndroidBitmap_lockPixels(void* /* env */, void* /* jbitmap */, void** /* addrPtr */) {
+    return -1;
+}
+extern "C" int AndroidBitmap_unlockPixels(void* /* env */, void* /* jbitmap */) {
+    return -1;
+}

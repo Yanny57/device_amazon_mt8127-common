@@ -1,0 +1,18 @@
+# Amazon/MTK daemons started from init.mt8127.rc. A GSI's init won't start a vendor
+# service without a domain to transition to; the device runs permissive, so the
+# domains carry no rules of their own yet.
+type nvram_agent_binder, domain;
+type nvram_agent_binder_exec, exec_type, vendor_file_type, file_type;
+init_daemon_domain(nvram_agent_binder)
+
+type kisd, domain;
+type kisd_exec, exec_type, vendor_file_type, file_type;
+init_daemon_domain(kisd)
+
+type rpmb_svc, domain;
+type rpmb_svc_exec, exec_type, vendor_file_type, file_type;
+init_daemon_domain(rpmb_svc)
+
+type amzn_drmprov, domain;
+type amzn_drmprov_exec, exec_type, vendor_file_type, file_type;
+init_daemon_domain(amzn_drmprov)

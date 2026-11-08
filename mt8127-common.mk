@@ -89,7 +89,13 @@ PRODUCT_PACKAGES += \
 	libshim_liblog \
 	libshim_libwvm \
     libshim_libcamera \
-    libshim_gui
+    libshim_gui \
+    libshim_audio \
+    libshim_sensor
+
+# Mali EGL front (see egl/egl_wrapper.c)
+PRODUCT_PACKAGES += \
+    libEGL_mali
 
 # Audio
 PRODUCT_PACKAGES += \

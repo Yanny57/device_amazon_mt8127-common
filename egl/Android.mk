@@ -1,0 +1,12 @@
+LOCAL_PATH := $(call my-dir)
+
+include $(CLEAR_VARS)
+LOCAL_MODULE := libEGL_mali
+LOCAL_MODULE_RELATIVE_PATH := egl
+LOCAL_VENDOR_MODULE := true
+LOCAL_SRC_FILES := egl_wrapper.c
+LOCAL_SHARED_LIBRARIES := liblog libdl
+LOCAL_HEADER_LIBRARIES := gl_headers
+LOCAL_CFLAGS := -Wall -Werror
+LOCAL_MULTILIB := 32
+include $(BUILD_SHARED_LIBRARY)

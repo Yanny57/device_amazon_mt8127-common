@@ -1,6 +1,10 @@
 import /vendor/etc/init/hw/init.mt8127.usb.rc
 
 on early-init
+    # Firmware, thermal and .tp configs are read through /odm. Lineage's root makes it
+    # a symlink to /vendor/odm (so this binds it onto itself); GSIs ship /odm as an
+    # empty directory.
+    mount none /vendor/odm /odm bind
     mount debugfs debugfs /sys/kernel/debug
     chmod 0755 /sys/kernel/debug
     wait /dev/.coldboot_done 10

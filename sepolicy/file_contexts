@@ -1,4 +1,5 @@
 # Services
+/(vendor|system\/vendor)/bin/hw/android\.hardware\.audio@2\.0-service\.mt8127  u:object_r:hal_audio_default_exec:s0
 /(system|system\/vendor|vendor)/bin/6620_launcher               u:object_r:conn_launcher_exec:s0
 /(system|system\/vendor|vendor)/bin/ccci_fsd                    u:object_r:ccci_fsd_exec:s0
 /(system|system\/vendor|vendor)/bin/ccci_mdinit                 u:object_r:ccci_mdinit_exec:s0
@@ -14,6 +15,10 @@
 /(system|system\/vendor|vendor)/bin/memsicd3416x                u:object_r:memsicd3416x_exec:s0
 /(system|system\/vendor|vendor)/bin/mtk_agpsd                   u:object_r:mtk_agpsd_exec:s0
 /(system|system\/vendor|vendor)/bin/nvram_daemon                u:object_r:nvram_daemon_exec:s0
+/(system|system\/vendor|vendor)/bin/nvram_agent_binder          u:object_r:nvram_agent_binder_exec:s0
+/(system|system\/vendor|vendor)/bin/kisd                        u:object_r:kisd_exec:s0
+/(system|system\/vendor|vendor)/bin/rpmb_svc                    u:object_r:rpmb_svc_exec:s0
+/(system|system\/vendor|vendor)/bin/amzn_drmprov_check          u:object_r:amzn_drmprov_exec:s0
 /(system|system\/vendor|vendor)/bin/pq                          u:object_r:pq_exec:s0
 /(system|system\/vendor|vendor)/bin/terservice                  u:object_r:terservice_exec:s0
 /(system|system\/vendor|vendor)/bin/thermal                     u:object_r:thermal_exec:s0
