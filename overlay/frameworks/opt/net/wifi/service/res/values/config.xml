@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
+    <!-- The MT6620 driver can't do SAE: don't upgrade saved WPA2 networks to WPA3
+         on WPA2/WPA3 transition-mode access points (association fails). -->
+    <bool translatable="false" name="config_wifiSaeUpgradeEnabled">false</bool>
+</resources>
