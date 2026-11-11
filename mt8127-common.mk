@@ -189,7 +189,8 @@ PRODUCT_PACKAGES += \
 
 # The sensors HAL reads /dev/input, which the stock service rc doesn't grant
 PRODUCT_COPY_FILES += \
-    $(DEVICE_COMMON)/rootdir/sensors-override.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/sensors-override.rc
+    $(DEVICE_COMMON)/rootdir/sensors-override.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/sensors-override.rc \
+    $(DEVICE_COMMON)/rootdir/camera-provider-override.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/camera-provider-override.rc
 
 # Nougat blobs: no gatekeeper/keymaster HAL (software fallbacks), so the
 # framework compatibility matrix check cannot pass

@@ -1,0 +1,11 @@
+# The MTK camera HAL keeps its lens, 3A, defect and shading calibration in
+# /data/nvram (root:system 0771); without the system group it can't create
+# those files and runs on defaults.
+service vendor.camera-provider-2-4 /vendor/bin/hw/android.hardware.camera.provider@2.4-service
+    override
+    class hal
+    user cameraserver
+    group audio camera input drmrpc system
+    ioprio rt 4
+    capabilities SYS_NICE
+    task_profiles CameraServiceCapacity MaxPerformance
