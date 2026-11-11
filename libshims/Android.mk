@@ -31,7 +31,7 @@ include $(BUILD_SHARED_LIBRARY)
 
 
 include $(CLEAR_VARS)
-LOCAL_SRC_FILES := shim_liblog.c shim_atomic.c shim_thread.cpp shim_unicode.cpp shim_stopwatch.cpp
+LOCAL_SRC_FILES := shim_liblog.c shim_atomic.c shim_thread.cpp shim_unicode.cpp shim_stopwatch.cpp shim_crypto.c
 LOCAL_SHARED_LIBRARIES := liblog libutils
 LOCAL_MODULE := libshim_liblog
 LOCAL_MODULE_TAGS := optional
