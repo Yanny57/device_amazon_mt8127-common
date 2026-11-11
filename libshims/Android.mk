@@ -31,7 +31,7 @@ include $(BUILD_SHARED_LIBRARY)
 
 
 include $(CLEAR_VARS)
-LOCAL_SRC_FILES := shim_liblog.c shim_atomic.c shim_thread.cpp
+LOCAL_SRC_FILES := shim_liblog.c shim_atomic.c shim_thread.cpp shim_unicode.cpp shim_stopwatch.cpp
 LOCAL_SHARED_LIBRARIES := liblog libutils
 LOCAL_MODULE := libshim_liblog
 LOCAL_MODULE_TAGS := optional
@@ -47,7 +47,7 @@ LOCAL_SHARED_LIBRARIES := libui libutils libbinder libhidlbase libhidltransport 
     android.hidl.token@1.0-utils
 LOCAL_HEADER_LIBRARIES := libgui_headers gl_headers libnativebase_headers libnativewindow_headers libbinder_headers
 LOCAL_ALLOW_UNDEFINED_SYMBOLS := true
-LOCAL_C_INCLUDES := frameworks/native/include
+LOCAL_C_INCLUDES := frameworks/native/include $(LOCAL_PATH)/include
 LOCAL_MODULE := libshim_gui
 LOCAL_MODULE_TAGS := optional
 LOCAL_MODULE_CLASS := SHARED_LIBRARIES

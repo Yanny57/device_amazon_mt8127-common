@@ -72,7 +72,7 @@ PRODUCT_PACKAGES += \
     android.hardware.camera.provider@2.4-impl \
     camera.device@1.0-impl \
     android.hardware.graphics.allocator@2.0-impl \
-    android.hardware.graphics.composer@2.1-impl \
+    android.hardware.graphics.composer@2.1-service \
     android.hardware.graphics.mapper@2.0-impl \
     android.hardware.keymaster@3.0-impl \
     android.hardware.light@2.0-impl \
@@ -190,3 +190,17 @@ PRODUCT_PACKAGES += \
 # The sensors HAL reads /dev/input, which the stock service rc doesn't grant
 PRODUCT_COPY_FILES += \
     $(DEVICE_COMMON)/rootdir/sensors-override.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/sensors-override.rc
+
+# Nougat blobs: no gatekeeper/keymaster HAL (software fallbacks), so the
+# framework compatibility matrix check cannot pass
+PRODUCT_ENFORCE_VINTF_MANIFEST_OVERRIDE := false
+
+# Health: R's BatteryService needs a vendor IHealth (system healthd no longer serves "backup")
+PRODUCT_PACKAGES += \
+    android.hardware.health@2.1-impl \
+    android.hardware.health@2.1-service
+
+# R no longer installs vndservicemanager by default; vendor binder clients
+# (camera provider, composer) need the /dev/vndbinder context manager
+PRODUCT_PACKAGES += \
+    vndservicemanager

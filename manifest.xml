@@ -2,7 +2,7 @@
      Only the graphics HALs are passthrough (same-process, sphal namespace); the rest run as
      vendor services, since their legacy deps are not reachable from sphal.
      The allocator is passthrough: legacy gralloc framebuffer buffers only work in the process that allocated them. -->
-<manifest version="1.0" type="device">
+<manifest version="1.0" type="device" target-level="1">
     <hal format="hidl">
         <name>android.hardware.drm</name>
         <transport>hwbinder</transport>
@@ -53,17 +53,8 @@
         </interface>
     </hal>
     <hal format="hidl">
-        <name>android.hardware.configstore</name>
-        <transport>hwbinder</transport>
-        <version>1.0</version>
-        <interface>
-            <name>ISurfaceFlingerConfigs</name>
-            <instance>default</instance>
-        </interface>
-    </hal>
-    <hal format="hidl">
         <name>android.hardware.graphics.composer</name>
-        <transport arch="32">passthrough</transport>
+        <transport>hwbinder</transport>
         <version>2.1</version>
         <interface>
             <name>IComposer</name>
@@ -143,24 +134,6 @@
         <version>1.0</version>
         <interface>
             <name>ISensors</name>
-            <instance>default</instance>
-        </interface>
-    </hal>
-    <hal format="hidl">
-        <name>android.hardware.wifi</name>
-        <transport>hwbinder</transport>
-        <version>1.1</version>
-        <interface>
-            <name>IWifi</name>
-            <instance>default</instance>
-        </interface>
-    </hal>
-    <hal format="hidl">
-        <name>android.hardware.wifi.supplicant</name>
-        <transport>hwbinder</transport>
-        <version>1.2</version>
-        <interface>
-            <name>ISupplicant</name>
             <instance>default</instance>
         </interface>
     </hal>

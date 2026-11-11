@@ -140,3 +140,6 @@ SELINUX_IGNORE_NEVERALLOWS := true
 
 # Audio: Q only supports the XML audio policy configuration
 USE_XML_AUDIO_POLICY_CONF := 1
+
+# Nougat blobs list DT_NEEDED libs the prebuilt modules do not declare
+BUILD_BROKEN_PREBUILT_ELF_FILES := true

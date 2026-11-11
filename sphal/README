@@ -5,4 +5,5 @@ through sphal, which in VNDK-lite only searches /vendor/lib{,/hw} and links LLND
 plus a list of VNDK-SP libs. Installed to /vendor/lib/hw by mt8127-common.mk:
 sphal searches it but vendor processes don't, so these VNDK variants (libbinder
 lacks PermissionCache) don't shadow the system libs that vendor services load.
-Refresh from out/target/product/ford/system/lib/vndk-29 after a framework rebuild.
+Refresh with sphal/refresh.sh (vendor.30 variants from out/soong) after a framework rebuild.
+R has no composer passthrough impl; the composer runs as a vendor service instead.
