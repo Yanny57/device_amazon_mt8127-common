@@ -20,6 +20,8 @@
 
 #define LOG_TAG "audiohalservice"
 
+#include <signal.h>
+
 #include <android/hardware/audio/2.0/IDevicesFactory.h>
 #include <android/hardware/audio/effect/2.0/IEffectsFactory.h>
 #include <binder/ProcessState.h>
@@ -30,6 +32,11 @@ using namespace android::hardware;
 using android::OK;
 
 int main(int /* argc */, char* /* argv */ []) {
+    // dumpsys hands the HAL the reader's pipe; if the reader goes away early
+    // (dumpsys | head, bugreport timeouts) the Nougat blob's dump writes would
+    // raise SIGPIPE and kill the whole audio HAL.
+    signal(SIGPIPE, SIG_IGN);
+
     ::android::ProcessState::initWithDriver("/dev/binder");
     ::android::ProcessState::self()->startThreadPool();
 
