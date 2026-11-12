@@ -104,6 +104,44 @@ static void wpa_driver_notify_country_change(void *ctx, char *cmd)
     }
 }
 
+/* MediaTek nl80211 testmode interface (kernel: mt_wifi os/linux/include/gl_os.h) */
+#define MTK_TESTMODE_CMD_ID_SUSPEND 101
+#define MTK_TESTMODE_VERSION        (0x01 << 24)
+
+struct mtk_testmode_hdr {
+    u32 index;
+    u32 buflen;
+};
+
+struct mtk_testmode_suspend_params {
+    struct mtk_testmode_hdr hdr;
+    u8 suspend;
+};
+
+/*
+ * Tell the driver whether the host is suspended (screen off). In suspend
+ * mode the firmware only wakes the host for traffic to our own addresses;
+ * otherwise every broadcast/multicast frame (e.g. periodic IPv6 router
+ * advertisements) wakes the system.
+ */
+static int wpa_driver_mediatek_set_suspend_mode(struct i802_bss *bss, int suspend)
+{
+    struct mtk_testmode_suspend_params params;
+    struct nl_msg *msg;
+
+    os_memset(&params, 0, sizeof(params));
+    params.hdr.index = MTK_TESTMODE_CMD_ID_SUSPEND | MTK_TESTMODE_VERSION;
+    params.hdr.buflen = sizeof(params);
+    params.suspend = suspend ? 1 : 0;
+
+    msg = nl80211_cmd_msg(bss, 0, NL80211_CMD_TESTMODE);
+    if (!msg || nla_put(msg, NL80211_ATTR_TESTDATA, sizeof(params), &params)) {
+        nlmsg_free(msg);
+        return -1;
+    }
+    return send_and_recv_msgs(bss->drv, msg, NULL, NULL);
+}
+
 int wpa_driver_nl80211_driver_cmd(void *priv, char *cmd, char *buf,
                   size_t buf_len )
 {
@@ -212,6 +250,10 @@ int wpa_driver_nl80211_driver_cmd(void *priv, char *cmd, char *buf,
             // if (endp != cp)
                 // ret = wpa_driver_wext_driver_set_rts(drv, thd);
         }
+    } else if (os_strncasecmp(cmd, "SETSUSPENDMODE ", 15) == 0) {
+        int suspend = atoi(cmd + 15);
+        ret = wpa_driver_mediatek_set_suspend_mode(bss, suspend);
+        wpa_printf(MSG_INFO, "SETSUSPENDMODE %d, ret=%d", suspend, ret);
     } else if (os_strcasecmp(cmd, "btcoexscan-start") == 0) {
         ret = 0; /* mt5921 linux driver not implement yet */
     } else if (os_strcasecmp(cmd, "btcoexscan-stop") == 0) {
