@@ -102,6 +102,8 @@ lib/libcamera_client_mtk.so
 lib/libcameraanalyzer.so
 lib/libcustom_nvram.so
 lib/libcvsd_mtk.so
+# libdpframework: DT_FLAGS patched with DF_SYMBOLIC (0x8 -> 0xa) so its tile_* calls
+# bind to its own copies, not libcamdrv's incompatible ones (else MDP tile init fails, black preview).
 -lib/libdpframework.so
 lib/libdrmmtkutil.so
 lib/libdrmplayreadydecryptor.so
