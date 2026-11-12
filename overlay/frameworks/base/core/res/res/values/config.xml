@@ -58,4 +58,9 @@
     -->
     <bool name="config_enableWifiDisplay">true</bool>
     
+    <!-- CameraService runs in mediaserver (HAL1): let it re-request the
+         allowed camera users after a restart, else every open fails with
+         "cannot connect from device user 0" until reboot. -->
+    <bool name="config_allowMediaUidForCameraServiceProxy">true</bool>
+
 </resources>
