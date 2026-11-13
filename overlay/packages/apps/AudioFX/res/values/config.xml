@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The speaker volume curve already ends at 0 dB like Fire OS; the
+         "Small speakers" EQ only takes headroom off it, so it sounded quieter. -->
+    <bool name="config_speakerEffectsEnabledByDefault">false</bool>
+</resources>
