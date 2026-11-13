@@ -1,0 +1,13 @@
+// Static GPT tool for the ford repartition zips (runs in TWRP).
+// Not in PRODUCT_PACKAGES, so it never lands in the ROM; build it with
+// `m ford_repart` and pack it with mkzips.sh.
+cc_binary {
+    name: "ford_repart",
+    srcs: ["ford_repart.c"],
+    static_executable: true,
+    cflags: [
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+    ],
+}

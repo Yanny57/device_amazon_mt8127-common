@@ -1,0 +1,213 @@
+#!/sbin/sh
+#
+# Fire 7 (2015, ford) repartition zip for TWRP.
+#
+#   treble: system 2048 MiB + vendor 256 MiB (p14) + cache 128 MiB + userdata
+#           (LineageOS 18.1 and other builds with a /vendor partition)
+#   stock:  Amazon's layout, system 1200 MiB + cache 250 MiB + userdata
+#
+# Only the GPT is rewritten (p1-p10: preloader data, LK, boot, recovery and
+# TEE never move, so TWRP keeps working). Changing the layout ERASES system,
+# cache, userdata and internal storage. The microSD card is not touched.
+#
+# Copyright (C) 2026 The LineageOS Project
+# SPDX-License-Identifier: Apache-2.0
+
+OUTFD=/proc/self/fd/$2
+ZIPFILE="$3"
+TMP=/tmp/ford_repart
+DISK=/dev/block/mmcblk0
+
+ui_print() {
+    echo "ui_print $1" > "$OUTFD"
+    echo "ui_print" > "$OUTFD"
+}
+
+abort() {
+    ui_print "ERROR: $1"
+    ui_print "Nothing was changed."
+    exit 1
+}
+
+rm -rf "$TMP"
+mkdir -p "$TMP"
+unzip -o "$ZIPFILE" ford_repart target -d "$TMP" >/dev/null 2>&1 ||
+    abort "could not unpack the zip"
+chmod 0755 "$TMP/ford_repart"
+TARGET=$(cat "$TMP/target")
+
+ui_print " "
+ui_print "Fire 7 (2015, ford) repartition: $TARGET layout"
+ui_print "----------------------------------------------"
+
+# --- safety checks ---------------------------------------------------------
+dev=$(getprop ro.product.device)
+[ -z "$dev" ] && dev=$(getprop ro.build.product)
+# ford_repart also refuses any disk whose p1-p10 aren't ford's, so only stop
+# here when the recovery clearly names another device.
+case "$dev" in
+    ""|ford|*ford*) ;;
+    *) abort "this is not a Fire 7 2015 (ford), device='$dev'" ;;
+esac
+
+cap=$(cat /sys/class/power_supply/battery/capacity 2>/dev/null)
+if [ -n "$cap" ] && [ "$cap" -lt 15 ]; then
+    abort "battery at $cap%, charge it to at least 15% first"
+fi
+
+[ -b "$DISK" ] || abort "$DISK not found"
+
+run_tool() {
+    # run ford_repart and show its output on screen
+    "$TMP/ford_repart" "$@" > "$TMP/log" 2>&1
+    rc=$?
+    while IFS= read -r line; do ui_print "  $line"; done < "$TMP/log"
+    return $rc
+}
+
+run_tool status
+status_rc=$?
+[ $status_rc -eq 0 ] || abort "unknown partition table: this is not a stock or treble ford layout"
+current=$(sed -n 's/^layout: //p' "$TMP/log")
+
+part() { echo "$DISK"p"$1"; }
+
+wait_for() {
+    for i in 1 2 3 4 5 6 7 8 9 10; do
+        [ -b "$1" ] && return 0
+        sleep 1
+    done
+    return 1
+}
+
+mkfs_ext4() { # device label [extra make_ext4fs args]
+    dev=$1; label=$2; shift 2
+    if command -v make_ext4fs >/dev/null 2>&1; then
+        make_ext4fs -L "$label" "$@" "$dev" >/dev/null 2>&1
+    else
+        # mke2fs takes a size instead of make_ext4fs' negative -l length
+        mke2fs -F -q -t ext4 -L "$label" "$dev" >/dev/null 2>&1
+    fi
+}
+
+format_part() { # number label [make_ext4fs args]
+    num=$1; label=$2; shift 2
+    dev=$(part "$num")
+    wait_for "$dev" || { ui_print "  $label: $dev missing, skipped"; return 1; }
+    if is_mounted "$dev"; then
+        ui_print "  $label is mounted, not formatting it"
+        return 1
+    fi
+    if mkfs_ext4 "$dev" "$label" "$@"; then
+        ui_print "  formatted $label"
+    else
+        ui_print "  FAILED to format $label"
+        return 1
+    fi
+}
+
+is_mounted() { # device (also matches by-name links in /proc/mounts)
+    while read -r src rest; do
+        case "$src" in /dev/*) ;; *) continue ;; esac
+        [ "$(readlink -f "$src")" = "$1" ] && return 0
+    done < /proc/mounts
+    return 1
+}
+
+has_fs() { # device: mounted, mountable, or at least carries an ext4 superblock
+    is_mounted "$1" && return 0
+    mkdir -p "$TMP/mnt"
+    if mount -t ext4 -o ro "$1" "$TMP/mnt" 2>/dev/null; then
+        umount "$TMP/mnt"
+        return 0
+    fi
+    # ext4 magic 0xEF53 at byte 1080 (od -x prints it as one 16-bit word;
+    # busybox 1.22's od has no -A/-t)
+    magic=$(dd if="$1" bs=1 skip=1080 count=2 2>/dev/null | od -x | head -n 1 | awk '{print $2}')
+    [ "$magic" = ef53 ]
+}
+
+format_all() {
+    # userdata keeps 16 KiB free at the end for the crypto footer
+    format_part 13 userdata -l -16384 -a /data
+    format_part 12 cache -a /cache
+    format_part 11 system -a /system
+    [ "$TARGET" = treble ] && format_part 14 vendor -a /vendor
+    if mount -t ext4 "$(part 13)" /data 2>/dev/null; then
+        mkdir -p /data/media/0
+        chown 1023:1023 /data/media /data/media/0
+        umount /data
+    fi
+}
+
+if [ "$current" = "$TARGET" ]; then
+    # Flashed again on a converted unit (e.g. the first run could not make the
+    # kernel re-read the table): give cache and vendor a filesystem if they
+    # have none. Userdata is never formatted here, it may hold user data the
+    # recovery just can't mount (e.g. encrypted).
+    ui_print " "
+    ui_print "Already on the $TARGET layout."
+    repaired=0
+    for p in "12 cache -a /cache" "14 vendor -a /vendor"; do
+        set -- $p
+        [ "$TARGET" = stock ] && [ "$1" = 14 ] && continue
+        if ! has_fs "$(part "$1")"; then
+            ui_print "  $2 has no filesystem, formatting it"
+            format_part "$@"
+            repaired=1
+        fi
+    done
+    if ! has_fs "$(part 13)"; then
+        ui_print "  userdata has no filesystem: use Wipe > Format Data"
+        repaired=1
+    fi
+    [ $repaired -eq 0 ] && ui_print "All partitions are fine, nothing to do."
+    exit 0
+fi
+
+ui_print " "
+ui_print "Switching $current -> $TARGET."
+ui_print "This ERASES system, cache, data and internal storage!"
+ui_print " "
+
+# --- unmount everything on the eMMC ---------------------------------------
+sync
+for m in $(grep -E "^/dev/block/(mmcblk0p|platform/mtk-msdc.0/by-name/|bootdevice/)" /proc/mounts |
+           cut -d' ' -f2 | sort -r); do
+    umount "$m" 2>/dev/null || umount -l "$m" 2>/dev/null
+done
+umount /sdcard 2>/dev/null
+
+# --- back up the old table --------------------------------------------------
+BACKUP=/tmp
+for d in /external_sd /sdcard1 /usb-otg; do
+    if grep -q " $d " /proc/mounts && touch "$d/.ford_repart_test" 2>/dev/null; then
+        rm -f "$d/.ford_repart_test"
+        BACKUP=$d/ford-gpt-backup
+        mkdir -p "$BACKUP"
+        break
+    fi
+done
+
+# --- repartition -------------------------------------------------------------
+run_tool --backup "$BACKUP" "$TARGET" || abort "repartitioning failed (see above)"
+[ "$BACKUP" = /tmp ] && ui_print "  (no microSD: the old table backup in /tmp is lost on reboot)"
+
+ui_print " "
+if grep -q "kernel re-read the partition table" "$TMP/log"; then
+    ui_print "Formatting the new partitions..."
+    format_all
+    ui_print " "
+    ui_print "Done. Reboot to recovery (Reboot > Recovery) before"
+    ui_print "flashing a ROM, so TWRP sees the new layout."
+else
+    ui_print "The new table is written, but the kernel still uses the"
+    ui_print "old one. Reboot to recovery (Reboot > Recovery) and flash"
+    ui_print "this zip again: it will format the new partitions."
+fi
+if [ "$TARGET" = treble ]; then
+    ui_print "Then flash LineageOS 18.1 (or another treble build)."
+else
+    ui_print "Then flash a ROM made for the stock layout."
+fi
+exit 0
