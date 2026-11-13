@@ -152,6 +152,15 @@ PRODUCT_BUILD_PROP_OVERRIDES += BUILD_UTC_DATE=0
 # speed-profile system_server and a 128m/256m dalvik heap
 $(call inherit-product, build/target/product/go_defaults.mk)
 
+# go_defaults only sets the heap limits; without these ART starts every heap at
+# 2m with 2m max free and 0.5 target utilization, so apps GC several times a
+# second (YouTube ANRs, browser jank). Values from phone-xhdpi-1024-dalvik-heap.mk.
+PRODUCT_PROPERTY_OVERRIDES += \
+    dalvik.vm.heapstartsize=8m \
+    dalvik.vm.heaptargetutilization=0.75 \
+    dalvik.vm.heapminfree=512k \
+    dalvik.vm.heapmaxfree=8m
+
 # call hwui memory config
 $(call inherit-product-if-exists, frameworks/native/build/phone-xxhdpi-2048-hwui-memory.mk)
 
