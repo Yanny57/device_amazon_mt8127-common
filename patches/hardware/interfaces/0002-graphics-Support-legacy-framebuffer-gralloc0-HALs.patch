@@ -1,0 +1,155 @@
+From 78676daa0e1ceac4498ee6031956c870b98de579 Mon Sep 17 00:00:00 2001
+From: Yanny57 <duke57883@outlook.com>
+Date: Fri, 23 Oct 2026 16:43:01 -0400
+Subject: [PATCH 2/8] graphics: Support legacy framebuffer gralloc0 HALs
+
+Legacy Mali gralloc refuses to register framebuffer buffers. Clone
+handles leniently, hand out the original handle when registration
+fails, and never free GRALLOC_USAGE_HW_FB buffers in the passthrough
+allocator.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Change-Id: I37992345893100f6e52e878884aaca5308cc26fc
+---
+ .../allocator-passthrough/2.0/Gralloc0Hal.h   | 18 +++++++
+ .../mapper-passthrough/2.0/Gralloc0Hal.h      | 49 ++++++++++++++++++-
+ 2 files changed, 65 insertions(+), 2 deletions(-)
+
+diff --git a/graphics/allocator/2.0/utils/passthrough/include/allocator-passthrough/2.0/Gralloc0Hal.h b/graphics/allocator/2.0/utils/passthrough/include/allocator-passthrough/2.0/Gralloc0Hal.h
+index 6c179be..6ac1565 100644
+--- a/graphics/allocator/2.0/utils/passthrough/include/allocator-passthrough/2.0/Gralloc0Hal.h
++++ b/graphics/allocator/2.0/utils/passthrough/include/allocator-passthrough/2.0/Gralloc0Hal.h
+@@ -21,6 +21,8 @@
+ #endif
+ 
+ #include <cstring>  // for strerror
++#include <mutex>
++#include <unordered_set>
+ 
+ #include <allocator-hal/2.0/AllocatorHal.h>
+ #include <hardware/gralloc.h>
+@@ -116,6 +118,15 @@ class Gralloc0HalImpl : public Hal {
+ 
+     void freeBuffers(const std::vector<const native_handle_t*>& buffers) override {
+         for (auto buffer : buffers) {
++            {
++                // Legacy framebuffer buffers can't be registered by the mapper, so
++                // with a passthrough allocator the mapper keeps using these very
++                // handles: leave them allocated.
++                std::lock_guard<std::mutex> lock(mFramebufferHandlesMutex);
++                if (mFramebufferHandles.count(buffer)) {
++                    continue;
++                }
++            }
+             int result = mDevice->free(mDevice, buffer);
+             if (result != 0) {
+                 ALOGE("failed to free buffer %p: %d", buffer, result);
+@@ -136,6 +147,10 @@ class Gralloc0HalImpl : public Hal {
+                                     info.usage, &buffer, &stride);
+         switch (result) {
+             case 0:
++                if (info.usage & GRALLOC_USAGE_HW_FB) {
++                    std::lock_guard<std::mutex> lock(mFramebufferHandlesMutex);
++                    mFramebufferHandles.insert(buffer);
++                }
+                 *outBuffer = buffer;
+                 *outStride = stride;
+                 return Error::NONE;
+@@ -147,6 +162,9 @@ class Gralloc0HalImpl : public Hal {
+     }
+ 
+     alloc_device_t* mDevice = nullptr;
++
++    std::mutex mFramebufferHandlesMutex;
++    std::unordered_set<const native_handle_t*> mFramebufferHandles;
+ };
+ 
+ }  // namespace detail
+diff --git a/graphics/mapper/2.0/utils/passthrough/include/mapper-passthrough/2.0/Gralloc0Hal.h b/graphics/mapper/2.0/utils/passthrough/include/mapper-passthrough/2.0/Gralloc0Hal.h
+index 7369ac7..331bd3d 100644
+--- a/graphics/mapper/2.0/utils/passthrough/include/mapper-passthrough/2.0/Gralloc0Hal.h
++++ b/graphics/mapper/2.0/utils/passthrough/include/mapper-passthrough/2.0/Gralloc0Hal.h
+@@ -20,6 +20,11 @@
+ #endif
+ 
+ #include <inttypes.h>
++#include <string.h>
++#include <unistd.h>
++
++#include <mutex>
++#include <unordered_set>
+ 
+ #include <hardware/gralloc.h>
+ #include <log/log.h>
+@@ -75,7 +80,7 @@ class Gralloc0HalImpl : public Hal {
+ 
+     Error importBuffer(const native_handle_t* rawHandle,
+                        native_handle_t** outBufferHandle) override {
+-        native_handle_t* bufferHandle = native_handle_clone(rawHandle);
++        native_handle_t* bufferHandle = cloneHandleLenient(rawHandle);
+         if (!bufferHandle) {
+             return Error::NO_RESOURCES;
+         }
+@@ -83,7 +88,16 @@ class Gralloc0HalImpl : public Hal {
+         if (mModule->registerBuffer(mModule, bufferHandle)) {
+             native_handle_close(bufferHandle);
+             native_handle_delete(bufferHandle);
+-            return Error::BAD_BUFFER;
++
++            // Legacy (Nougat) Mali gralloc refuses to register framebuffer buffers,
++            // which are only ever allocated and used inside surfaceflinger (the
++            // allocator is passthrough and does not free them). Before Oreo those
++            // were never registered or cloned, and the driver needs the original
++            // handle (a clone loses data beyond numInts), so hand that out as is.
++            ALOGW("registerBuffer failed, using the original handle");
++            bufferHandle = const_cast<native_handle_t*>(rawHandle);
++            std::lock_guard<std::mutex> lock(mUnownedHandlesMutex);
++            mUnownedHandles.insert(bufferHandle);
+         }
+ 
+         *outBufferHandle = bufferHandle;
+@@ -92,6 +106,14 @@ class Gralloc0HalImpl : public Hal {
+     }
+ 
+     Error freeBuffer(native_handle_t* bufferHandle) override {
++        {
++            std::lock_guard<std::mutex> lock(mUnownedHandlesMutex);
++            if (mUnownedHandles.erase(bufferHandle)) {
++                // still owned by gralloc (legacy framebuffer buffer)
++                return Error::NONE;
++            }
++        }
++
+         if (mModule->unregisterBuffer(mModule, bufferHandle)) {
+             return Error::BAD_BUFFER;
+         }
+@@ -175,6 +197,29 @@ class Gralloc0HalImpl : public Hal {
+     }
+ 
+    protected:
++    // Like native_handle_clone(), but keeps going when an fd can't be dup'd:
++    // legacy gralloc framebuffer handles can carry fds that are not valid in the
++    // importing process, and those are never needed for mapping.
++    static native_handle_t* cloneHandleLenient(const native_handle_t* handle) {
++        native_handle_t* clone = native_handle_create(handle->numFds, handle->numInts);
++        if (!clone) {
++            return nullptr;
++        }
++        for (int i = 0; i < handle->numFds; i++) {
++            clone->data[i] = handle->data[i] >= 0 ? dup(handle->data[i]) : -1;
++            if (clone->data[i] < 0 && handle->data[i] >= 0) {
++                ALOGW("cloneHandleLenient: dup(%d) failed, keeping -1", handle->data[i]);
++            }
++        }
++        memcpy(&clone->data[handle->numFds], &handle->data[handle->numFds],
++               sizeof(int) * handle->numInts);
++        return clone;
++    }
++
++    // Handles imported without registering or cloning (see importBuffer)
++    std::mutex mUnownedHandlesMutex;
++    std::unordered_set<native_handle_t*> mUnownedHandles;
++
+     virtual uint64_t getValidBufferUsageMask() const {
+         return BufferUsage::CPU_READ_MASK | BufferUsage::CPU_WRITE_MASK | BufferUsage::GPU_TEXTURE |
+                BufferUsage::GPU_RENDER_TARGET | BufferUsage::COMPOSER_OVERLAY |

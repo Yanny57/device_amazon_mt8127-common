@@ -1,0 +1,61 @@
+From b97f8b179776bb381995657bd10966ef9490956e Mon Sep 17 00:00:00 2001
+From: Yanny57 <duke57883@outlook.com>
+Date: Thu, 12 Nov 2026 19:24:14 -0500
+Subject: [PATCH] AudioFX: Let devices keep speaker effects off by default
+
+The defaults enable effects on the built-in speaker with the "Small
+speakers" EQ. Its LVM bundle headroom lowers the overall level, which
+makes an already tuned speaker quieter. Add
+config_speakerEffectsEnabledByDefault (default true, unchanged
+behaviour) so a device overlay can turn it off.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Change-Id: Iae3a102f4a421df40f94d132d7ef7611990e491e
+---
+ res/values/config.xml                         | 22 +++++++++++++++++++
+ .../service/DevicePreferenceManager.java      |  3 ++-
+ 2 files changed, 24 insertions(+), 1 deletion(-)
+ create mode 100644 res/values/config.xml
+
+diff --git a/res/values/config.xml b/res/values/config.xml
+new file mode 100644
+index 0000000..7b81a12
+--- /dev/null
++++ b/res/values/config.xml
+@@ -0,0 +1,22 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!--
++     Copyright (C) 2026 The LineageOS Project
++
++     Licensed under the Apache License, Version 2.0 (the "License");
++     you may not use this file except in compliance with the License.
++     You may obtain a copy of the License at
++
++          http://www.apache.org/licenses/LICENSE-2.0
++
++     Unless required by applicable law or agreed to in writing, software
++     distributed under the License is distributed on an "AS IS" BASIS,
++     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++     See the License for the specific language governing permissions and
++     limitations under the License.
++-->
++<resources>
++    <!-- Whether effects start enabled on the built-in speaker (with the
++         "Small speakers" EQ preset). Devices whose speaker is already tuned
++         can turn this off: the EQ headroom makes it quieter overall. -->
++    <bool name="config_speakerEffectsEnabledByDefault">true</bool>
++</resources>
+diff --git a/src/org/lineageos/audiofx/service/DevicePreferenceManager.java b/src/org/lineageos/audiofx/service/DevicePreferenceManager.java
+index 173e46e..7b9a756 100644
+--- a/src/org/lineageos/audiofx/service/DevicePreferenceManager.java
++++ b/src/org/lineageos/audiofx/service/DevicePreferenceManager.java
+@@ -300,7 +300,8 @@ public class DevicePreferenceManager
+         int idx = findInList(smallSpeakers, presetNames);
+         if (idx >= 0) {
+             speakerPrefs.edit()
+-                .putBoolean(DEVICE_AUDIOFX_GLOBAL_ENABLE, true)
++                .putBoolean(DEVICE_AUDIOFX_GLOBAL_ENABLE, mContext.getResources().getBoolean(
++                        R.bool.config_speakerEffectsEnabledByDefault))
+                 .putString(DEVICE_AUDIOFX_EQ_PRESET, String.valueOf(idx))
+                 .commit();
+         }

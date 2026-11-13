@@ -1,0 +1,65 @@
+From 4376e623b05f3aacac51976f8f698f3dc4a65eda Mon Sep 17 00:00:00 2001
+From: Yanny57 <duke57883@outlook.com>
+Date: Thu, 12 Nov 2026 19:24:14 -0500
+Subject: [PATCH] TcpSocketTracker: Handle kernels with a short tcp_info
+
+Kernels older than 4.2 send a 104-byte struct tcp_info without
+tcpi_segs_in/tcpi_segs_out. TcpInfo.parse() rejects it and leaves the
+buffer position at the start of the attribute, so the following
+attributes were read from the wrong offset; NetworkMonitor logged a
+parsing error and a wtf on every poll.
+
+- Always continue after the INET_DIAG_INFO attribute.
+- Report TCP info parsing as unsupported on kernels < 4.2, where it
+  can never succeed; data stall detection then uses DNS only.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Change-Id: I97aa919cb080bab64edfada6a621d2f42d2b0c04
+---
+ .../netlink/TcpSocketTracker.java             | 25 ++++++++++++++++++-
+ 1 file changed, 24 insertions(+), 1 deletion(-)
+
+diff --git a/src/com/android/networkstack/netlink/TcpSocketTracker.java b/src/com/android/networkstack/netlink/TcpSocketTracker.java
+index ef33f13..6f88a46 100644
+--- a/src/com/android/networkstack/netlink/TcpSocketTracker.java
++++ b/src/com/android/networkstack/netlink/TcpSocketTracker.java
+@@ -302,7 +302,13 @@ public class TcpSocketTracker {
+                     new RoutingAttribute(bytes.getShort(), bytes.getShort());
+             final short dataLen = rtattr.getDataLength();
+             if (rtattr.rtaType == RoutingAttribute.INET_DIAG_INFO) {
++                final int infoStart = bytes.position();
+                 tcpInfo = TcpInfo.parse(bytes, dataLen);
++                // TcpInfo.parse() leaves the position untouched when it rejects the data (e.g.
++                // the shorter tcp_info of kernels older than 4.2, which lack tcpi_segs_in).
++                // Always continue after this attribute so the next header is read correctly.
++                bytes.position(infoStart);
++                skipRemainingAttributesBytesAligned(bytes, dataLen);
+             } else if (rtattr.rtaType == RoutingAttribute.INET_DIAG_MARK) {
+                 mark = bytes.getInt();
+             } else {
+@@ -578,7 +584,24 @@ public class TcpSocketTracker {
+         public boolean isTcpInfoParsingSupported() {
+             // Request tcp info from NetworkStack directly needs extra SELinux permission added
+             // after Q release.
+-            return ShimUtils.isReleaseOrDevelopmentApiAbove(Build.VERSION_CODES.Q);
++            return ShimUtils.isReleaseOrDevelopmentApiAbove(Build.VERSION_CODES.Q)
++                    && KERNEL_HAS_TCP_SEGS;
++        }
++
++        // TcpInfo needs tcpi_segs_in/tcpi_segs_out, added to struct tcp_info in Linux 4.2.
++        // Older kernels send a shorter struct that can never be parsed, so every poll would
++        // fail; treat TCP info as unsupported there (data stall detection falls back to DNS).
++        private static final boolean KERNEL_HAS_TCP_SEGS = isKernelAtLeast(4, 2);
++
++        private static boolean isKernelAtLeast(int major, int minor) {
++            try {
++                final String[] v = Os.uname().release.split("[.-]");
++                final int kMajor = Integer.parseInt(v[0]);
++                final int kMinor = Integer.parseInt(v[1]);
++                return kMajor > major || (kMajor == major && kMinor >= minor);
++            } catch (RuntimeException e) {
++                return true;
++            }
+         }
+ 
+         /**

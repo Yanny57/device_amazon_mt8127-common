@@ -1,0 +1,167 @@
+From c400758f5579cb4faa1946403a05ba717d1fa54c Mon Sep 17 00:00:00 2001
+From: Yanny57 <duke57883@outlook.com>
+Date: Tue, 10 Nov 2026 23:45:13 -0500
+Subject: [PATCH 5/8] graphics: Keep framebuffer handles imported by the
+ composer service
+
+Legacy Mali gralloc can't register framebuffer buffers, so the
+gralloc0 mapper hands out the original handle (owned by
+surfaceflinger) instead. In the Android 11 out-of-process composer
+the raw handle came over binder and is freed after the call, so the
+HWC read freed memory on the next present. Importers that receive
+remote handles (the composer service) now keep an unregistered clone
+and close it in freeBuffer; binder only carries numFds + numInts, so
+the clone loses nothing. Imported handles are reference counted,
+since the same framebuffer handle can be imported more than once.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Change-Id: I263d527c20540f29ae4953c793682f9116270bec
+---
+ .../mapper-passthrough/2.0/Gralloc0Hal.h      | 55 ++++++++++++++-----
+ .../mapper-passthrough/2.0/GrallocLoader.h    | 18 ++++--
+ 2 files changed, 56 insertions(+), 17 deletions(-)
+
+diff --git a/graphics/mapper/2.0/utils/passthrough/include/mapper-passthrough/2.0/Gralloc0Hal.h b/graphics/mapper/2.0/utils/passthrough/include/mapper-passthrough/2.0/Gralloc0Hal.h
+index 331bd3d..55459c3 100644
+--- a/graphics/mapper/2.0/utils/passthrough/include/mapper-passthrough/2.0/Gralloc0Hal.h
++++ b/graphics/mapper/2.0/utils/passthrough/include/mapper-passthrough/2.0/Gralloc0Hal.h
+@@ -20,6 +20,7 @@
+ #endif
+ 
+ #include <inttypes.h>
++#include <stdlib.h>
+ #include <string.h>
+ #include <unistd.h>
+ 
+@@ -86,18 +87,28 @@ class Gralloc0HalImpl : public Hal {
+         }
+ 
+         if (mModule->registerBuffer(mModule, bufferHandle)) {
+-            native_handle_close(bufferHandle);
+-            native_handle_delete(bufferHandle);
+-
+-            // Legacy (Nougat) Mali gralloc refuses to register framebuffer buffers,
+-            // which are only ever allocated and used inside surfaceflinger (the
+-            // allocator is passthrough and does not free them). Before Oreo those
+-            // were never registered or cloned, and the driver needs the original
+-            // handle (a clone loses data beyond numInts), so hand that out as is.
+-            ALOGW("registerBuffer failed, using the original handle");
+-            bufferHandle = const_cast<native_handle_t*>(rawHandle);
++            // Legacy (Nougat) Mali gralloc refuses to register framebuffer buffers.
+             std::lock_guard<std::mutex> lock(mUnownedHandlesMutex);
+-            mUnownedHandles.insert(bufferHandle);
++            if (importsRemoteHandles()) {
++                // The raw handle came over binder (composer service) and is freed
++                // after the call, while the importer keeps using the buffer. Binder
++                // only carries numFds + numInts, so the clone loses nothing: keep it,
++                // unregistered, and close it in freeBuffer.
++                ALOGW("registerBuffer failed, keeping an unregistered clone");
++                mUnregisteredClones.insert(bufferHandle);
++            } else {
++                native_handle_close(bufferHandle);
++                native_handle_delete(bufferHandle);
++
++                // Framebuffer buffers are allocated and used inside surfaceflinger
++                // (the allocator is passthrough and does not free them). Before Oreo
++                // those were never registered or cloned, and the driver needs the
++                // original handle (a clone loses data beyond numInts), so hand that
++                // out as is.
++                ALOGW("registerBuffer failed, using the original handle");
++                bufferHandle = const_cast<native_handle_t*>(rawHandle);
++                mUnownedHandles.insert(bufferHandle);
++            }
+         }
+ 
+         *outBufferHandle = bufferHandle;
+@@ -108,10 +119,19 @@ class Gralloc0HalImpl : public Hal {
+     Error freeBuffer(native_handle_t* bufferHandle) override {
+         {
+             std::lock_guard<std::mutex> lock(mUnownedHandlesMutex);
+-            if (mUnownedHandles.erase(bufferHandle)) {
++            auto it = mUnownedHandles.find(bufferHandle);
++            if (it != mUnownedHandles.end()) {
++                mUnownedHandles.erase(it);
+                 // still owned by gralloc (legacy framebuffer buffer)
+                 return Error::NONE;
+             }
++            auto clone = mUnregisteredClones.find(bufferHandle);
++            if (clone != mUnregisteredClones.end()) {
++                mUnregisteredClones.erase(clone);
++                native_handle_close(bufferHandle);
++                native_handle_delete(bufferHandle);
++                return Error::NONE;
++            }
+         }
+ 
+         if (mModule->unregisterBuffer(mModule, bufferHandle)) {
+@@ -216,9 +236,18 @@ class Gralloc0HalImpl : public Hal {
+         return clone;
+     }
+ 
++    // The composer service imports handles that arrive over binder; every other
++    // importer of framebuffer buffers (surfaceflinger) owns them (see importBuffer).
++    static bool importsRemoteHandles() {
++        static const bool remote = strstr(getprogname(), "composer") != nullptr;
++        return remote;
++    }
++
+     // Handles imported without registering or cloning (see importBuffer)
+     std::mutex mUnownedHandlesMutex;
+-    std::unordered_set<native_handle_t*> mUnownedHandles;
++    std::unordered_multiset<native_handle_t*> mUnownedHandles;
++    // Unregistered clones the importer owns (see importBuffer)
++    std::unordered_set<native_handle_t*> mUnregisteredClones;
+ 
+     virtual uint64_t getValidBufferUsageMask() const {
+         return BufferUsage::CPU_READ_MASK | BufferUsage::CPU_WRITE_MASK | BufferUsage::GPU_TEXTURE |
+diff --git a/graphics/mapper/2.0/utils/passthrough/include/mapper-passthrough/2.0/GrallocLoader.h b/graphics/mapper/2.0/utils/passthrough/include/mapper-passthrough/2.0/GrallocLoader.h
+index 85a91c3..b4b688a 100644
+--- a/graphics/mapper/2.0/utils/passthrough/include/mapper-passthrough/2.0/GrallocLoader.h
++++ b/graphics/mapper/2.0/utils/passthrough/include/mapper-passthrough/2.0/GrallocLoader.h
+@@ -22,7 +22,7 @@
+ 
+ #include <memory>
+ #include <mutex>
+-#include <unordered_set>
++#include <unordered_map>
+ 
+ #include <hardware/gralloc.h>
+ #include <hardware/hardware.h>
+@@ -56,16 +56,26 @@ class GrallocImportedBufferPool {
+         return *singleton;
+     }
+ 
++    // Imported handles are counted: legacy framebuffer handles are imported
++    // as is (see Gralloc0Hal), so the same handle can be imported more than once.
+     void* add(native_handle_t* bufferHandle) {
+         std::lock_guard<std::mutex> lock(mMutex);
+-        return mBufferHandles.insert(bufferHandle).second ? bufferHandle : nullptr;
++        mBufferHandles[bufferHandle]++;
++        return bufferHandle;
+     }
+ 
+     native_handle_t* remove(void* buffer) {
+         auto bufferHandle = static_cast<native_handle_t*>(buffer);
+ 
+         std::lock_guard<std::mutex> lock(mMutex);
+-        return mBufferHandles.erase(bufferHandle) == 1 ? bufferHandle : nullptr;
++        auto it = mBufferHandles.find(bufferHandle);
++        if (it == mBufferHandles.end()) {
++            return nullptr;
++        }
++        if (--it->second == 0) {
++            mBufferHandles.erase(it);
++        }
++        return bufferHandle;
+     }
+ 
+     native_handle_t* get(void* buffer) {
+@@ -84,7 +94,7 @@ class GrallocImportedBufferPool {
+ 
+    private:
+     std::mutex mMutex;
+-    std::unordered_set<const native_handle_t*> mBufferHandles;
++    std::unordered_map<const native_handle_t*, uint32_t> mBufferHandles;
+ };
+ 
+ // Inherit from V2_*::hal::Mapper and override imported buffer management functions

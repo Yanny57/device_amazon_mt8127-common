@@ -1,0 +1,57 @@
+From 83346c1071dc1db405f423065ba673ce9fd350b6 Mon Sep 17 00:00:00 2001
+From: Yanny57 <duke57883@outlook.com>
+Date: Wed, 11 Nov 2026 15:49:11 -0500
+Subject: [PATCH 8/8] sensors: Optionally shift monotonic HAL timestamps to
+ boot time
+
+MediaTek's legacy sensors HAL stamps events with CLOCK_MONOTONIC,
+but Android expects elapsedRealtimeNano (CLOCK_BOOTTIME). After any
+suspend the events look old, and WindowOrientationListener drops
+them, so auto-rotate stops working. When
+ro.vendor.sensors.monotonic_timestamps is true, add the current
+boot/monotonic offset to every event in poll().
+
+Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>
+Change-Id: I018075ca618524c34b5fed6a3ddc28340a0d069c
+---
+ sensors/1.0/default/Sensors.cpp | 20 ++++++++++++++++++++
+ 1 file changed, 20 insertions(+)
+
+diff --git a/sensors/1.0/default/Sensors.cpp b/sensors/1.0/default/Sensors.cpp
+index 16f5e51..99c4b39 100644
+--- a/sensors/1.0/default/Sensors.cpp
++++ b/sensors/1.0/default/Sensors.cpp
+@@ -19,6 +19,9 @@
+ #include "multihal.h"
+ 
+ #include <android-base/logging.h>
++#include <android-base/properties.h>
++#include <utils/SystemClock.h>
++#include <utils/Timers.h>
+ 
+ #include <sys/stat.h>
+ 
+@@ -227,6 +230,23 @@ Return<void> Sensors::poll(int32_t maxCount, poll_cb _hidl_cb) {
+         dynamicSensorsAdded[numDynamicSensors] = info;
+     }
+ 
++    // Legacy HALs (e.g. MediaTek hwmsen) stamp events with CLOCK_MONOTONIC, which
++    // stops while the device is suspended. The framework expects
++    // elapsedRealtimeNano() (CLOCK_BOOTTIME); after the first suspend the two
++    // drift apart and consumers that compare against real time, such as the
++    // auto-rotate judge, reject every sample. Shift such timestamps.
++    static const bool monotonicTimestamps = android::base::GetBoolProperty(
++            "ro.vendor.sensors.monotonic_timestamps", false);
++    if (monotonicTimestamps) {
++        const int64_t offset =
++                android::elapsedRealtimeNano() - systemTime(SYSTEM_TIME_MONOTONIC);
++        if (offset > 0) {
++            for (size_t i = 0; i < count; ++i) {
++                data[i].timestamp += offset;
++            }
++        }
++    }
++
+     out.resize(count);
+     convertFromSensorEvents(err, data.get(), &out);
+ 

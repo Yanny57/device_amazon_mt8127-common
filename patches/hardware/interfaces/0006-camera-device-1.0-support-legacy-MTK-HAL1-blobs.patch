@@ -1,15 +1,14 @@
-From ddf356231c60ac26cbcf28d20f95993cf2443520 Mon Sep 17 00:00:00 2001
+From 38b1183d09f6e00f01e02f69ba701e6335567c15 Mon Sep 17 00:00:00 2001
 From: Yanny57 <duke57883@outlook.com>
-Date: Fri, 23 Oct 2026 11:34:16 -0400
-Subject: [PATCH] camera: device@1.0: Support legacy MTK HAL1 blobs
+Date: Wed, 11 Nov 2026 00:31:36 -0500
+Subject: [PATCH 6/8] camera: device@1.0: support legacy MTK HAL1 blobs
 
-- Fall back to the open device when the HAL passes a null user cookie
-  to its callbacks (MTK get_memory does).
-- Back every dequeued preview handle with an ANativeWindowBuffer, since
-  the MTK DisplayClient container_of()s the handle pointer.
+Fall back to the opened device when the HAL passes a null cookie to
+get_memory, and back preview handles with ANativeWindowBuffer.
+Ported from the ford 15.1 patch 0004.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-Change-Id: Ibeaf5e1a1dde3d9d73f5af5f042551bdf5442ee1
+Change-Id: Iea57ba9354a622ebd1de23059d20d3dc2a38f9ac
 ---
  camera/device/1.0/default/Android.bp         |  2 +
  camera/device/1.0/default/CameraDevice.cpp   | 42 ++++++++++++++++----
@@ -17,21 +16,20 @@ Change-Id: Ibeaf5e1a1dde3d9d73f5af5f042551bdf5442ee1
  3 files changed, 45 insertions(+), 7 deletions(-)
 
 diff --git a/camera/device/1.0/default/Android.bp b/camera/device/1.0/default/Android.bp
-index d25d548..fa35161 100644
+index 788eaca..1e0f36c 100644
 --- a/camera/device/1.0/default/Android.bp
 +++ b/camera/device/1.0/default/Android.bp
-@@ -28,7 +28,9 @@ cc_library_shared {
+@@ -32,6 +32,8 @@ cc_library_shared {
      ],
      header_libs: [
          "media_plugin_headers",
 +        "libnativebase_headers",
      ],
 +    export_header_lib_headers: ["libnativebase_headers"],
-     include_dirs: [
-         "frameworks/native/include/media/openmax"
-     ],
+     export_include_dirs: ["."],
+ }
 diff --git a/camera/device/1.0/default/CameraDevice.cpp b/camera/device/1.0/default/CameraDevice.cpp
-index 116963b..b7da8f6 100644
+index cbea3f0..6a5a79e 100644
 --- a/camera/device/1.0/default/CameraDevice.cpp
 +++ b/camera/device/1.0/default/CameraDevice.cpp
 @@ -36,6 +36,10 @@ using ::android::hardware::graphics::common::V1_0::PixelFormat;
@@ -110,7 +108,7 @@ index 116963b..b7da8f6 100644
          ALOGE("%s: camera HAL request memory while camera is not opened!", __FUNCTION__);
          return nullptr;
      }
-@@ -412,7 +436,7 @@ void CameraDevice::sPutMemory(camera_memory_t *data) {
+@@ -414,7 +438,7 @@ void CameraDevice::sPutMemory(camera_memory_t *data) {
  // Callback forwarding methods
  void CameraDevice::sNotifyCb(int32_t msg_type, int32_t ext1, int32_t ext2, void *user) {
      ALOGV("%s", __FUNCTION__);
@@ -119,7 +117,7 @@ index 116963b..b7da8f6 100644
      if (object->mDeviceCallback != nullptr) {
          object->mDeviceCallback->notifyCallback((NotifyCallbackMsg) msg_type, ext1, ext2);
      }
-@@ -421,7 +445,7 @@ void CameraDevice::sNotifyCb(int32_t msg_type, int32_t ext1, int32_t ext2, void
+@@ -423,7 +447,7 @@ void CameraDevice::sNotifyCb(int32_t msg_type, int32_t ext1, int32_t ext2, void
  void CameraDevice::sDataCb(int32_t msg_type, const camera_memory_t *data, unsigned int index,
          camera_frame_metadata_t *metadata, void *user) {
      ALOGV("%s", __FUNCTION__);
@@ -128,7 +126,7 @@ index 116963b..b7da8f6 100644
      sp<CameraHeapMemory> mem(static_cast<CameraHeapMemory*>(data->handle));
      if (index >= mem->mNumBufs) {
          ALOGE("%s: invalid buffer index %d, max allowed is %d", __FUNCTION__,
-@@ -533,7 +557,7 @@ void CameraDevice::handleCallbackTimestamp(
+@@ -535,7 +559,7 @@ void CameraDevice::handleCallbackTimestamp(
  void CameraDevice::sDataCbTimestamp(nsecs_t timestamp, int32_t msg_type,
          const camera_memory_t *data, unsigned index, void *user) {
      ALOGV("%s", __FUNCTION__);
@@ -137,7 +135,7 @@ index 116963b..b7da8f6 100644
      // Start refcounting the heap object from here on.  When the clients
      // drop all references, it will be destroyed (as well as the enclosed
      // MemoryHeapBase.
-@@ -720,6 +744,7 @@ Return<Status> CameraDevice::open(const sp<ICameraDeviceCallback>& callback) {
+@@ -723,6 +747,7 @@ Return<Status> CameraDevice::open(const sp<ICameraDeviceCallback>& callback) {
          mDevice->ops->set_callbacks(mDevice,
                  sNotifyCb, sDataCb, sDataCbTimestamp, sGetMemory, this);
      }
@@ -145,7 +143,7 @@ index 116963b..b7da8f6 100644
  
      return getHidlStatus(rc);
  }
-@@ -1060,6 +1085,9 @@ void CameraDevice::closeLocked() {
+@@ -1063,6 +1088,9 @@ void CameraDevice::closeLocked() {
          }
          mDevice = nullptr;
      }
@@ -182,6 +180,3 @@ index 2b35a73..356f5f8 100644
      } mHalPreviewWindow;
  
      // gating access to mDevice, mInitFail, mDisconnected
--- 
-2.55.0
-

@@ -1,0 +1,154 @@
+From f606286e75d4eb3ea0327ab43b418f7393121cf1 Mon Sep 17 00:00:00 2001
+From: Yanny57 <duke57883@outlook.com>
+Date: Thu, 12 Nov 2026 18:35:35 -0500
+Subject: [PATCH 3/5] CameraClient: Support legacy MediaTek HAL1 blobs
+
+- MTK HAL1 delivers JPEGs as MTK_CAMERA_MSG_EXT_DATA (0x80000000): an
+  ext type (0x10 = compressed image), a shot index and, for multi-image
+  shots such as HDR, an is-final flag, followed by the JPEG. Unwrap it
+  into CAMERA_MSG_COMPRESSED_IMAGE that points at the JPEG in the same
+  heap. These HALs never send CAMERA_MSG_SHUTTER, so deliver one ahead
+  of the JPEG, and drop MTK_CAMERA_MSG_EXT_NOTIFY (0x40000000).
+  Without this no photo is ever saved.
+- Refuse VIDEO_BUFFER_MODE_DATA_CALLBACK_METADATA. The HAL fills the
+  metadata buffers with a vendor layout only the MTK OMX encoders read,
+  and Codec2 encoders accept only ANW metadata, so configure() failed
+  with EINVAL. CameraSource then falls back to YUV callbacks.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Change-Id: Ic8f9cb3a2e585fe9a2e97f099444f563838318a7
+---
+ .../libcameraservice/api1/CameraClient.cpp    | 78 +++++++++++++++++--
+ 1 file changed, 73 insertions(+), 5 deletions(-)
+
+diff --git a/services/camera/libcameraservice/api1/CameraClient.cpp b/services/camera/libcameraservice/api1/CameraClient.cpp
+index 43da23e..dafcb97 100644
+--- a/services/camera/libcameraservice/api1/CameraClient.cpp
++++ b/services/camera/libcameraservice/api1/CameraClient.cpp
+@@ -19,6 +19,7 @@
+ 
+ #include <cutils/atomic.h>
+ #include <cutils/properties.h>
++#include <binder/MemoryBase.h>
+ #include <gui/Surface.h>
+ #include <media/hardware/HardwareAPI.h>
+ 
+@@ -32,6 +33,11 @@ namespace android {
+ #define LOG1(...) ALOGD_IF(gLogLevel >= 1, __VA_ARGS__);
+ #define LOG2(...) ALOGD_IF(gLogLevel >= 2, __VA_ARGS__);
+ 
++// MediaTek HAL1 private message types (MtkCamera.h)
++static constexpr int32_t kMtkMsgExtNotify = 0x40000000;
++static constexpr int32_t kMtkMsgExtData = static_cast<int32_t>(0x80000000);
++static constexpr uint32_t kMtkExtDataCompressedImage = 0x10;
++
+ CameraClient::CameraClient(const sp<CameraService>& cameraService,
+         const sp<hardware::ICameraClient>& cameraClient,
+         const String16& clientPackageName, const std::unique_ptr<String16>& clientFeatureId,
+@@ -596,10 +602,14 @@ void CameraClient::releaseRecordingFrameHandleBatch(const std::vector<native_han
+ 
+ status_t CameraClient::setVideoBufferMode(int32_t videoBufferMode) {
+     LOG1("setVideoBufferMode: %d", videoBufferMode);
+-    bool enableMetadataInBuffers = false;
+-
+     if (videoBufferMode == VIDEO_BUFFER_MODE_DATA_CALLBACK_METADATA) {
+-        enableMetadataInBuffers = true;
++        // The legacy MTK HAL fills metadata buffers with its own vendor layout,
++        // which only the MTK OMX encoders understand, and those are left out of
++        // media_codecs.xml. The Codec2 software encoders take only ANW metadata
++        // and fail configure() with EINVAL. Refuse the mode so CameraSource falls
++        // back to VIDEO_BUFFER_MODE_DATA_CALLBACK_YUV.
++        ALOGI("%s: metadata mode not supported, using YUV video buffers", __FUNCTION__);
++        return INVALID_OPERATION;
+     } else if (videoBufferMode != VIDEO_BUFFER_MODE_DATA_CALLBACK_YUV) {
+         ALOGE("%s: %d: videoBufferMode %d is not supported.", __FUNCTION__, __LINE__,
+                 videoBufferMode);
+@@ -611,7 +621,7 @@ status_t CameraClient::setVideoBufferMode(int32_t videoBufferMode) {
+         return UNKNOWN_ERROR;
+     }
+ 
+-    return mHardware->storeMetaDataInBuffers(enableMetadataInBuffers);
++    return mHardware->storeMetaDataInBuffers(false);
+ }
+ 
+ bool CameraClient::previewEnabled() {
+@@ -852,6 +862,13 @@ void CameraClient::notifyCallback(int32_t msgType, int32_t ext1,
+     sp<CameraClient> client = getClientFromCookie(user);
+     if (client.get() == nullptr) return;
+ 
++    if (msgType == kMtkMsgExtNotify) {
++        // MTK HAL1 private notifications (capture done etc.). The shutter is
++        // synthesized when the JPEG arrives, see dataCallback().
++        LOG1("MTK ext notify ext1=%#x ext2=%#x", ext1, ext2);
++        return;
++    }
++
+     if (!client->lockIfMessageWanted(msgType)) return;
+ 
+     switch (msgType) {
+@@ -865,13 +882,64 @@ void CameraClient::notifyCallback(int32_t msgType, int32_t ext1,
+     }
+ }
+ 
++// MTK HAL1 blobs deliver JPEGs as MTK_CAMERA_MSG_EXT_DATA: the buffer starts with
++// the ext message type, a shot index and (for multi-image shots like HDR) an
++// is-final flag, followed by the JPEG. Unwrap it into a CAMERA_MSG_COMPRESSED_IMAGE
++// that points at the JPEG inside the same heap. Returns nullptr to drop it.
++static sp<IMemory> unwrapMtkCompressedImage(const sp<IMemory>& dataPtr) {
++    if (dataPtr == nullptr) return nullptr;
++    ssize_t offset = 0;
++    size_t size = 0;
++    sp<IMemoryHeap> heap = dataPtr->getMemory(&offset, &size);
++    const uint8_t* p = static_cast<const uint8_t*>(dataPtr->unsecurePointer());
++    if (heap == nullptr || p == nullptr || size < 16) return nullptr;
++
++    uint32_t w[4];
++    memcpy(w, p, sizeof(w));
++    if (w[0] != kMtkExtDataCompressedImage) {
++        LOG1("MTK ext data type %#x ignored", w[0]);
++        return nullptr;
++    }
++    size_t jpegOff = 0;
++    for (size_t o = 4; o <= 16 && o + 2 <= size; o += 4) {
++        if (p[o] == 0xFF && p[o + 1] == 0xD8) {
++            jpegOff = o;
++            break;
++        }
++    }
++    if (jpegOff == 0) {
++        ALOGW("MTK ext compressed image without JPEG SOI (%#x %#x %#x %#x)",
++                w[0], w[1], w[2], w[3]);
++        return nullptr;
++    }
++    // A flag word sits between the index and the JPEG on multi-image shots.
++    bool isFinal = jpegOff < 12 || w[2] != 0;
++    ALOGI("MTK ext compressed image: index %u, jpeg at +%zu, %zu bytes, final %d",
++            w[1], jpegOff, size - jpegOff, isFinal);
++    if (!isFinal) return nullptr;
++    return new MemoryBase(heap, offset + jpegOff, size - jpegOff);
++}
++
+ void CameraClient::dataCallback(int32_t msgType,
+-        const sp<IMemory>& dataPtr, camera_frame_metadata_t *metadata, void* user) {
++        const sp<IMemory>& rawDataPtr, camera_frame_metadata_t *metadata, void* user) {
+     LOG2("dataCallback(%d)", msgType);
+ 
+     sp<CameraClient> client = getClientFromCookie(user);
+     if (client.get() == nullptr) return;
+ 
++    sp<IMemory> dataPtr = rawDataPtr;
++    if (msgType == kMtkMsgExtData) {
++        dataPtr = unwrapMtkCompressedImage(rawDataPtr);
++        if (dataPtr == nullptr) return;
++        msgType = CAMERA_MSG_COMPRESSED_IMAGE;
++        // These HALs never send a plain CAMERA_MSG_SHUTTER; the legacy camera2
++        // shim needs one per capture, so deliver it ahead of the JPEG.
++        if ((client->mMsgEnabled & CAMERA_MSG_SHUTTER) &&
++                client->lockIfMessageWanted(CAMERA_MSG_SHUTTER)) {
++            client->handleShutter();  // releases mLock
++        }
++    }
++
+     if (!client->lockIfMessageWanted(msgType)) return;
+     if (dataPtr == 0 && metadata == NULL) {
+         ALOGE("Null data returned in data callback");

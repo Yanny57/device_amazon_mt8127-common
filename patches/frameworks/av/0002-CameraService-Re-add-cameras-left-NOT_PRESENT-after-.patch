@@ -1,0 +1,41 @@
+From 598c22fc5d5b6b24441d955fe95634cbc8097564 Mon Sep 17 00:00:00 2001
+From: Yanny57 <duke57883@outlook.com>
+Date: Thu, 12 Nov 2026 18:35:35 -0500
+Subject: [PATCH 2/5] CameraService: Re-add cameras left NOT_PRESENT after a
+ provider restart
+
+addStates() creates a camera's state as NOT_PRESENT and updateStatus()
+only flips it to PRESENT if supportsCameraApi() succeeds. If the
+provider dies in between, the state stays NOT_PRESENT, and
+enumerateProviders() only re-adds cameras that have no state at all,
+so the camera stays hidden until the service restarts. Mark such
+cameras present again once their provider re-registers.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Change-Id: I27ebda596401fbc834350096f7f7dea579d0e0c2
+---
+ services/camera/libcameraservice/CameraService.cpp | 11 ++++++++++-
+ 1 file changed, 10 insertions(+), 1 deletion(-)
+
+diff --git a/services/camera/libcameraservice/CameraService.cpp b/services/camera/libcameraservice/CameraService.cpp
+index c08810f..d53ad97 100644
+--- a/services/camera/libcameraservice/CameraService.cpp
++++ b/services/camera/libcameraservice/CameraService.cpp
+@@ -221,7 +221,16 @@ status_t CameraService::enumerateProviders() {
+ 
+     for (auto& cameraId : deviceIds) {
+         String8 id8 = String8(cameraId.c_str());
+-        if (getCameraState(id8) == nullptr) {
++        std::shared_ptr<CameraState> state = getCameraState(id8);
++        if (state == nullptr) {
++            onDeviceStatusChanged(id8, CameraDeviceStatus::PRESENT);
++        } else if (state->getStatus() == StatusInternal::NOT_PRESENT) {
++            // addStates() creates the state as NOT_PRESENT and updateStatus() bails out
++            // if the provider dies meanwhile (supportsCameraApi fails), leaving a stale
++            // state that would hide this camera for the life of the service. Retry it
++            // now that the provider is (re-)registered.
++            ALOGI("%s: Camera %s stuck NOT_PRESENT, marking it present", __FUNCTION__,
++                    id8.string());
+             onDeviceStatusChanged(id8, CameraDeviceStatus::PRESENT);
+         }
+     }

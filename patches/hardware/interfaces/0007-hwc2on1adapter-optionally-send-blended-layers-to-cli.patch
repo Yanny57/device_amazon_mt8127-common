@@ -1,0 +1,68 @@
+From 73ebd06dfe0301d0a1448e8ef64fb3ffe202e4ac Mon Sep 17 00:00:00 2001
+From: Yanny57 <duke57883@outlook.com>
+Date: Wed, 11 Nov 2026 00:31:36 -0500
+Subject: [PATCH 7/8] hwc2on1adapter: optionally send blended layers to client
+ composition
+
+The MT8127 HWC1 draws translucent (premultiplied/coverage) overlay
+layers wrong, leaving see-through patches in popups. When
+ro.vendor.hwc2on1.client_blended is true, mark blended Device layers
+HWC_SKIP_LAYER so SurfaceFlinger composes them on the GPU.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Change-Id: I18a7aebc50709d983c9a9424bba4fe4a2d980ba5
+---
+ .../2.1/utils/hwc2on1adapter/HWC2On1Adapter.cpp     | 13 +++++++++++++
+ .../include/hwc2on1adapter/HWC2On1Adapter.h         |  1 +
+ 2 files changed, 14 insertions(+)
+
+diff --git a/graphics/composer/2.1/utils/hwc2on1adapter/HWC2On1Adapter.cpp b/graphics/composer/2.1/utils/hwc2on1adapter/HWC2On1Adapter.cpp
+index 3702171..7175b42 100644
+--- a/graphics/composer/2.1/utils/hwc2on1adapter/HWC2On1Adapter.cpp
++++ b/graphics/composer/2.1/utils/hwc2on1adapter/HWC2On1Adapter.cpp
+@@ -29,6 +29,7 @@
+ #include <cstdlib>
+ #include <sstream>
+ 
++#include <cutils/properties.h>
+ #include <hardware/hwcomposer.h>
+ #include <log/log.h>
+ #include <utils/Trace.h>
+@@ -2201,6 +2202,13 @@ void HWC2On1Adapter::Layer::applyCompositionType(hwc_layer_1_t& hwc1Layer) {
+             break;
+         case Composition::Device:
+             hwc1Layer.compositionType = HWC_FRAMEBUFFER;
++            // Some HWC1 devices (MediaTek MT8127) blend translucent overlay
++            // layers wrongly, which shows up as see-through patches in popups,
++            // the shade and scrims. Optionally leave every blended layer to
++            // client (GPU) composition; opaque layers stay on overlays.
++            if (mBlendMode != BlendMode::None && skipBlendedLayers()) {
++                hwc1Layer.flags |= HWC_SKIP_LAYER;
++            }
+             break;
+         case Composition::SolidColor:
+             // In theory the following line should work, but since the HWC1
+@@ -2237,6 +2245,11 @@ void HWC2On1Adapter::Layer::applyCompositionType(hwc_layer_1_t& hwc1Layer) {
+     ALOGV_IF(hwc1Layer.flags & HWC_SKIP_LAYER, "    and skipping");
+ }
+ 
++bool HWC2On1Adapter::Layer::skipBlendedLayers() {
++    static const bool skip = property_get_bool("ro.vendor.hwc2on1.client_blended", false);
++    return skip;
++}
++
+ // Adapter helpers
+ 
+ void HWC2On1Adapter::populateCapabilities() {
+diff --git a/graphics/composer/2.1/utils/hwc2on1adapter/include/hwc2on1adapter/HWC2On1Adapter.h b/graphics/composer/2.1/utils/hwc2on1adapter/include/hwc2on1adapter/HWC2On1Adapter.h
+index da771dc..ed9a0cd 100644
+--- a/graphics/composer/2.1/utils/hwc2on1adapter/include/hwc2on1adapter/HWC2On1Adapter.h
++++ b/graphics/composer/2.1/utils/hwc2on1adapter/include/hwc2on1adapter/HWC2On1Adapter.h
+@@ -581,6 +581,7 @@ private:
+             void applySidebandState(struct hwc_layer_1& hwc1Layer);
+             void applyBufferState(struct hwc_layer_1& hwc1Layer);
+             void applyCompositionType(struct hwc_layer_1& hwc1Layer);
++            static bool skipBlendedLayers();
+ 
+             static std::atomic<hwc2_layer_t> sNextId;
+             const hwc2_layer_t mId;
