@@ -560,6 +560,17 @@ service ap_daemon /system/bin/wpa_supplicant \
 on property:persist.uartconsole.enable=1
     write /proc/mtprintk 1
 
+# On units fused as non-production (androidboot.prod=0, Lab126 debug units)
+# LK boots with printk.disable_uart=0, so every kernel message is also
+# written to the 921600 baud UART (slow, synchronous), and userdebug
+# builds start a root shell on it ("Serial console enabled" notification).
+# Turn both off at boot (before ActivityManager checks for the console). With
+# persist.uartconsole.enable=1 the kernel keeps the UART log
+# (mt_disable_uart() refuses once it was asked for).
+on boot
+    write /proc/mtprintk 0
+    stop console
+
 service auto_shutdown /system/bin/sh /vendor/bin/auto_shutdown.sh
 	oneshot
 	disabled
