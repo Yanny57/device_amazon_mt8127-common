@@ -267,8 +267,13 @@ static int open_lights(const struct hw_module_t* module, char const* name,
 
     if (0 == strcmp(LIGHT_ID_BACKLIGHT, name))
         set_light = set_light_backlight;
-    else if (0 == strcmp(LIGHT_ID_BUTTONS, name))
+    else if (0 == strcmp(LIGHT_ID_BUTTONS, name)) {
+        /* No button backlight on these tablets: don't offer the light, else
+         * every user-activity update fails ("Unknown error setting light"). */
+        if (access(BUTTONS_FILE, F_OK) != 0)
+            return -EINVAL;
         set_light = set_light_buttons;
+    }
     else if (0 == strcmp(LIGHT_ID_BATTERY, name))
         set_light = set_light_battery;
     else if (0 == strcmp(LIGHT_ID_NOTIFICATIONS, name))
