@@ -205,6 +205,15 @@ PRODUCT_COPY_FILES += \
 # framework compatibility matrix check cannot pass
 PRODUCT_ENFORCE_VINTF_MANIFEST_OVERRIDE := false
 
+# R's gatekeeperd has no built-in software fallback anymore: without a
+# gatekeeper HAL no PIN, pattern or password can be enrolled. The blobs have
+# no gatekeeper, so use AOSP's software one (fixed key, survives reboots).
+# Needs the system/keymaster auth token size fix from patches/: without it the
+# software keymaster rejects every auth token, enrolling fails half way and the
+# leftover synthetic password crashes system_server on the next boot.
+PRODUCT_PACKAGES += \
+    android.hardware.gatekeeper@1.0-service.software
+
 # Health: R's BatteryService needs a vendor IHealth (system healthd no longer serves "backup")
 PRODUCT_PACKAGES += \
     android.hardware.health@2.1-impl \

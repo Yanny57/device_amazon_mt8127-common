@@ -9,6 +9,7 @@ REPOSITORIES=(
     'packages/apps/AudioFX'
     'packages/modules/NetworkStack'
     'system/bt'
+    'system/keymaster'
     'system/libhidl'
 )
 

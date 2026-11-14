@@ -1,5 +1,6 @@
 # Services
 /(vendor|system\/vendor)/bin/hw/android\.hardware\.audio@2\.0-service\.mt8127  u:object_r:hal_audio_default_exec:s0
+/(vendor|system\/vendor)/bin/hw/android\.hardware\.gatekeeper@1\.0-service\.software  u:object_r:hal_gatekeeper_default_exec:s0
 /(system|system\/vendor|vendor)/bin/6620_launcher               u:object_r:conn_launcher_exec:s0
 /(system|system\/vendor|vendor)/bin/ccci_fsd                    u:object_r:ccci_fsd_exec:s0
 /(system|system\/vendor|vendor)/bin/ccci_mdinit                 u:object_r:ccci_mdinit_exec:s0

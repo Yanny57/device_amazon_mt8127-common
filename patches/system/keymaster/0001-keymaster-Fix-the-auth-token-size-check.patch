@@ -1,0 +1,32 @@
+From 940ecfa82ddbf68a99ac046a5f847b567f863dcf Mon Sep 17 00:00:00 2001
+From: Yanny57 <duke57883@outlook.com>
+Date: Fri, 13 Nov 2026 20:20:57 -0500
+Subject: [PATCH] keymaster: Fix the auth token size check
+
+GetAndValidateAuthToken() compared the token blob length with
+sizeof(*auth_token), the size of a pointer, instead of the size of
+hw_auth_token_t. Every auth token was rejected as "wrong size", so keys
+bound to a user secure ID could never be used on devices that rely on
+the software enforcement (legacy keymaster0/1 HALs wrapped by
+libkeymaster). On Android 11 that breaks setting any PIN, pattern or
+password: the synthetic password blob key can't be decrypted.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Change-Id: I738df35d4d56e2d97c04c562bddedfa787820d77
+---
+ android_keymaster/keymaster_enforcement.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/android_keymaster/keymaster_enforcement.cpp b/android_keymaster/keymaster_enforcement.cpp
+index 2db7165..bfaaf08 100644
+--- a/android_keymaster/keymaster_enforcement.cpp
++++ b/android_keymaster/keymaster_enforcement.cpp
+@@ -458,7 +458,7 @@ bool KeymasterEnforcement::GetAndValidateAuthToken(const AuthorizationSet& opera
+         return false;
+     }
+ 
+-    if (auth_token_blob.data_length != sizeof(*auth_token)) {
++    if (auth_token_blob.data_length != sizeof(**auth_token)) {
+         LOG_E("Bug: Auth token is the wrong size (%d expected, %d found)", sizeof(hw_auth_token_t),
+               auth_token_blob.data_length);
+         return false;
